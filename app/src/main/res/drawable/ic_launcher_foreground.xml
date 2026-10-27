@@ -1,0 +1,43 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Bold Chunky Cyan Border Line (Matte Adobe Style) -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4"
+        android:pathData="M24,16 L84,16 A8,8 0 0,1 92,24 L92,84 A8,8 0 0,1 84,92 L24,92 A8,8 0 0,1 16,84 L16,24 A8,8 0 0,1 24,16 Z" />
+
+    <!-- Bold, Fat Capital Letter 'L' (Left) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M28,32 L39,32 L39,63 L55,63 L55,74 L28,74 Z" />
+
+    <!-- Clean, Recognizable Minimalist Camera Icon (Right) -->
+    <!-- Camera Body with Top Prism Bump -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M52,43 L59,43 L62,38 L74,38 L77,43 L84,43 A4,4 0 0,1 88,47 L88,64 A4,4 0 0,1 84,68 L52,68 A4,4 0 0,1 48,64 L48,47 A4,4 0 0,1 52,43 Z" />
+
+    <!-- Shutter Button on Top -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M51,39 L55,39 L55,42 L51,42 Z" />
+
+    <!-- Viewfinder Square -->
+    <path
+        android:fillColor="#15171E"
+        android:pathData="M52,46 L55,46 L55,49 L52,49 Z" />
+
+    <!-- Camera Outer Lens Rim -->
+    <path
+        android:fillColor="#15171E"
+        android:pathData="M68,45 A7.5,7.5 0 1,0 68,60 A7.5,7.5 0 1,0 68,45 Z" />
+
+    <!-- Camera Inner Lens Pupil -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M68,48 A4.5,4.5 0 1,0 68,57 A4.5,4.5 0 1,0 68,48 Z" />
+</vector>

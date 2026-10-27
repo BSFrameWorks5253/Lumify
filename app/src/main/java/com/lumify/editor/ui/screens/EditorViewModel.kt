@@ -1,0 +1,298 @@
+package com.lumify.editor.ui.screens
+
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.lumify.editor.core.AspectRatio
+import com.lumify.editor.core.CropRect
+import com.lumify.editor.core.EditState
+import com.lumify.editor.core.HistogramData
+import com.lumify.editor.core.HistoryManager
+import com.lumify.editor.core.HslAdjustment
+import com.lumify.editor.core.HslChannel
+import com.lumify.editor.core.ImageMetadata
+import com.lumify.editor.core.ImageProcessor
+import com.lumify.editor.core.RawImageDecoder
+import com.lumify.editor.presets.FilterPreset
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+
+enum class EditorTab(val label: String) {
+    LIGHT("Light"),
+    COLOR("Color"),
+    HSL("HSL"),
+    DETAIL("Detail"),
+    CROP("Crop"),
+    PRESETS("Presets")
+}
+
+data class EditorUiState(
+    val originalBitmap: Bitmap? = null,
+    val previewBitmap: Bitmap? = null,
+    val metadata: ImageMetadata? = null,
+    val editState: EditState = EditState(),
+    val activeTab: EditorTab = EditorTab.LIGHT,
+    val activeHslChannel: HslChannel = HslChannel.RED,
+    val isComparing: Boolean = false,
+    val isProcessing: Boolean = false,
+    val histogramData: HistogramData? = null,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    val showExportDialog: Boolean = false,
+    val exportMessage: String? = null
+)
+
+class EditorViewModel : ViewModel() {
+
+    private val _uiState = MutableStateFlow(EditorUiState())
+    val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
+
+    private val historyManager = HistoryManager()
+    private var processJob: Job? = null
+
+    fun loadImage(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isProcessing = true)
+            try {
+                val (bitmap, metadata) = RawImageDecoder.decodeImage(context, uri)
+                historyManager.reset()
+                _uiState.value = _uiState.value.copy(
+                    originalBitmap = bitmap,
+                    previewBitmap = bitmap,
+                    metadata = metadata,
+                    editState = EditState(),
+                    isProcessing = false
+                )
+                updateHistogram(bitmap)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    exportMessage = "Error loading image: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun setBitmapDirectly(bitmap: Bitmap, metadata: ImageMetadata) {
+        historyManager.reset()
+        _uiState.value = _uiState.value.copy(
+            originalBitmap = bitmap,
+            previewBitmap = bitmap,
+            metadata = metadata,
+            editState = EditState(),
+            isProcessing = false
+        )
+        updateHistogram(bitmap)
+    }
+
+    fun setActiveTab(tab: EditorTab) {
+        _uiState.value = _uiState.value.copy(activeTab = tab)
+    }
+
+    fun setActiveHslChannel(channel: HslChannel) {
+        _uiState.value = _uiState.value.copy(activeHslChannel = channel)
+    }
+
+    fun toggleComparison(showOriginal: Boolean) {
+        _uiState.value = _uiState.value.copy(isComparing = showOriginal)
+    }
+
+    fun setShowExportDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showExportDialog = show)
+    }
+
+    fun clearMessage() {
+        _uiState.value = _uiState.value.copy(exportMessage = null)
+    }
+
+    fun updateEditState(transform: (EditState) -> EditState) {
+        val newState = transform(_uiState.value.editState)
+        _uiState.value = _uiState.value.copy(editState = newState)
+        scheduleProcessing(newState)
+    }
+
+    fun onSliderDragFinished() {
+        historyManager.pushState(_uiState.value.editState)
+        syncHistoryFlags()
+    }
+
+    fun applyPreset(preset: FilterPreset) {
+        val newState = preset.applyState(_uiState.value.editState)
+        historyManager.pushState(newState)
+        _uiState.value = _uiState.value.copy(editState = newState)
+        syncHistoryFlags()
+        scheduleProcessing(newState)
+    }
+
+    fun undo() {
+        val previousState = historyManager.undo() ?: return
+        _uiState.value = _uiState.value.copy(editState = previousState)
+        syncHistoryFlags()
+        scheduleProcessing(previousState)
+    }
+
+    fun redo() {
+        val nextState = historyManager.redo() ?: return
+        _uiState.value = _uiState.value.copy(editState = nextState)
+        syncHistoryFlags()
+        scheduleProcessing(nextState)
+    }
+
+    fun resetEdits() {
+        val emptyState = historyManager.reset()
+        _uiState.value = _uiState.value.copy(editState = emptyState)
+        syncHistoryFlags()
+        scheduleProcessing(emptyState)
+    }
+
+    fun updateHslAdjustment(channel: HslChannel, adjustment: HslAdjustment) {
+        val currentHsl = _uiState.value.editState.hslAdjustments.toMutableMap()
+        currentHsl[channel] = adjustment
+        updateEditState { it.copy(hslAdjustments = currentHsl) }
+    }
+
+    fun setAspectRatio(ratio: AspectRatio) {
+        val curCrop = _uiState.value.editState.cropRect ?: CropRect()
+        val bmp = _uiState.value.originalBitmap ?: return
+
+        val targetRatio = ratio.ratio
+        val newCrop = if (targetRatio == null) {
+            CropRect()
+        } else {
+            val imgRatio = bmp.width.toFloat() / bmp.height.toFloat()
+            if (targetRatio > imgRatio) {
+                val newH = imgRatio / targetRatio
+                val top = (1f - newH) / 2f
+                CropRect(left = 0f, top = top, right = 1f, bottom = top + newH)
+            } else {
+                val newW = targetRatio / imgRatio
+                val left = (1f - newW) / 2f
+                CropRect(left = left, top = 0f, right = left + newW, bottom = 1f)
+            }
+        }
+
+        updateEditState {
+            it.copy(cropRect = newCrop, selectedAspectRatio = ratio)
+        }
+        onSliderDragFinished()
+    }
+
+    fun rotate90() {
+        updateEditState {
+            it.copy(rotationDegrees = (it.rotationDegrees + 90f) % 360f)
+        }
+        onSliderDragFinished()
+    }
+
+    fun flipHorizontal() {
+        updateEditState {
+            it.copy(flipHorizontal = !it.flipHorizontal)
+        }
+        onSliderDragFinished()
+    }
+
+    private fun scheduleProcessing(state: EditState) {
+        val source = _uiState.value.originalBitmap ?: return
+        processJob?.cancel()
+        processJob = viewModelScope.launch {
+            delay(16) // ~60fps debounce for ultra responsive touch scrubbing
+            val processed = ImageProcessor.processImage(source, state)
+            _uiState.value = _uiState.value.copy(previewBitmap = processed)
+            updateHistogram(processed)
+        }
+    }
+
+    private fun updateHistogram(bitmap: Bitmap) {
+        viewModelScope.launch {
+            val hist = ImageProcessor.computeHistogram(bitmap)
+            _uiState.value = _uiState.value.copy(histogramData = hist)
+        }
+    }
+
+    private fun syncHistoryFlags() {
+        _uiState.value = _uiState.value.copy(
+            canUndo = historyManager.canUndo,
+            canRedo = historyManager.canRedo
+        )
+    }
+
+    fun exportImage(
+        context: Context,
+        format: ExportFormat,
+        quality: Int,
+        preserveExif: Boolean
+    ) {
+        viewModelScope.launch {
+            val source = _uiState.value.originalBitmap ?: return@launch
+            _uiState.value = _uiState.value.copy(isProcessing = true, showExportDialog = false)
+
+            try {
+                // Render full resolution
+                val finalBitmap = ImageProcessor.processImage(source, _uiState.value.editState, isExport = true)
+                val fileName = "LUMIFY_${System.currentTimeMillis()}.${format.extension.lowercase().substringBefore(' ')}"
+
+                val success = saveBitmapToGallery(context, finalBitmap, fileName, format.compressFormat, quality)
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    exportMessage = if (success) "Saved to Gallery: $fileName" else "Failed to save image."
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isProcessing = false,
+                    exportMessage = "Export failed: ${e.message}"
+                )
+            }
+        }
+    }
+
+    private fun saveBitmapToGallery(
+        context: Context,
+        bitmap: Bitmap,
+        filename: String,
+        format: Bitmap.CompressFormat,
+        quality: Int
+    ): Boolean {
+        var outputStream: OutputStream? = null
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, if (format == Bitmap.CompressFormat.PNG) "image/png" else "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Lumify")
+                }
+                val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return false
+                outputStream = context.contentResolver.openOutputStream(uri)
+            } else {
+                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString() + "/Lumify"
+                val file = File(imagesDir)
+                if (!file.exists()) file.mkdirs()
+                val image = File(imagesDir, filename)
+                outputStream = FileOutputStream(image)
+            }
+
+            outputStream?.let {
+                bitmap.compress(format, quality, it)
+                it.flush()
+                true
+            } ?: false
+        } catch (_: Exception) {
+            false
+        } finally {
+            outputStream?.close()
+        }
+    }
+}

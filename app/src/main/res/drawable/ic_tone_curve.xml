@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Bounding Grid -->
+    <path
+        android:strokeColor="#55FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M3,3 L21,3 L21,21 L3,21 Z M3,12 L21,12 M12,3 L12,21" />
+    <!-- S-Curve Spline -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M3,21 C9,21 9,15 12,12 C15,9 15,3 21,3" />
+</vector>

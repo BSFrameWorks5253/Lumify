@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Lumify</string>
+    <string name="raw_photo_editor">Pro RAW &amp; Photo Editor</string>
+    <string name="open_image">Open Image</string>
+    <string name="take_photo">Take RAW Photo</string>
+    <string name="export_image">Export</string>
+    <string name="undo">Undo</string>
+    <string name="redo">Redo</string>
+    <string name="reset">Reset All</string>
+    <string name="compare">Hold to Compare</string>
+</resources>
