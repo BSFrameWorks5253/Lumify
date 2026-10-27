@@ -1,24 +1,26 @@
-name: Build Android APK
+name: Build & Sign Android APK & Bundle
 
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: 'Build Type'
+      target:
+        description: 'Build Target'
         required: true
-        default: 'debug'
+        default: 'all'
         type: choice
         options:
-          - debug
-          - release
+          - all
+          - release_apk
+          - release_aab
+          - debug_apk
 
 jobs:
   build:
-    name: Build ${{ inputs.build_type }} APK
+    name: Build Lumify (${{ inputs.target }})
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -34,17 +36,46 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
+      - name: Decode Release Keystore (if GitHub Secret provided)
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-keystore.jks" >> $GITHUB_ENV
+
       - name: Build Debug APK
-        if: ${{ inputs.build_type == 'debug' }}
+        if: ${{ inputs.target == 'debug_apk' }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Build Release APK
-        if: ${{ inputs.build_type == 'release' }}
+        if: ${{ inputs.target == 'release_apk' || inputs.target == 'all' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Build Release AAB (Google Play Store Bundle)
+        if: ${{ inputs.target == 'release_aab' || inputs.target == 'all' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --stacktrace
+
+      - name: Upload APK Artifacts
+        if: ${{ inputs.target == 'debug_apk' || inputs.target == 'release_apk' || inputs.target == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Lumify-${{ inputs.build_type }}-apk
+          name: Lumify-APKs
           path: app/build/outputs/apk/**/*.apk
+          retention-days: 14
+
+      - name: Upload AAB Play Store Bundle
+        if: ${{ inputs.target == 'release_aab' || inputs.target == 'all' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lumify-Release-AAB
+          path: app/build/outputs/bundle/**/*.aab
           retention-days: 14

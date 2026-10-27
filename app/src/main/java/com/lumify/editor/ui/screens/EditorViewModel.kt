@@ -30,10 +30,17 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 
+import androidx.compose.ui.geometry.Offset
+import com.lumify.editor.core.MaskType
+import com.lumify.editor.core.SelectiveMask
+
 enum class EditorTab(val label: String) {
     LIGHT("Light"),
     COLOR("Color"),
+    CURVES("Curves"),
     HSL("HSL"),
+    MASKS("Masks"),
+    OPTICS("Optics"),
     DETAIL("Detail"),
     CROP("Crop"),
     PRESETS("Presets")
@@ -52,7 +59,12 @@ data class EditorUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val showExportDialog: Boolean = false,
-    val exportMessage: String? = null
+    val exportMessage: String? = null,
+    val isEyedropperActive: Boolean = false,
+    val isLoupeActive: Boolean = false,
+    val loupeTouchOffset: Offset = Offset.Zero,
+    val loupeTouchNorm: Offset = Offset(0.5f, 0.5f),
+    val copiedRecipe: EditState? = null
 )
 
 class EditorViewModel : ViewModel() {
@@ -202,6 +214,132 @@ class EditorViewModel : ViewModel() {
             it.copy(flipHorizontal = !it.flipHorizontal)
         }
         onSliderDragFinished()
+    }
+
+    // --- Phase 2: Eyedropper & Masking ---
+
+    fun toggleEyedropper(active: Boolean? = null) {
+        val next = active ?: !_uiState.value.isEyedropperActive
+        _uiState.value = _uiState.value.copy(
+            isEyedropperActive = next,
+            isLoupeActive = if (next) false else _uiState.value.isLoupeActive
+        )
+    }
+
+    fun sampleEyedropper(normX: Float, normY: Float) {
+        val bmp = _uiState.value.originalBitmap ?: return
+        val (dTemp, dTint) = ImageProcessor.sampleNeutralWhiteBalance(bmp, normX, normY)
+        val current = _uiState.value.editState
+        val next = current.copy(
+            temperature = (current.temperature + dTemp).coerceIn(-100f, 100f),
+            tint = (current.tint + dTint).coerceIn(-100f, 100f)
+        )
+        historyManager.pushState(next)
+        _uiState.value = _uiState.value.copy(
+            editState = next,
+            isEyedropperActive = false,
+            exportMessage = "White balance calibrated to neutral point"
+        )
+        scheduleProcessing(next)
+        syncHistoryFlags()
+    }
+
+    fun createOrUpdateMask(type: MaskType) {
+        val currentMask = _uiState.value.editState.activeMask
+        val newMask = if (currentMask != null && currentMask.type == type) {
+            currentMask
+        } else {
+            SelectiveMask(type = type)
+        }
+        updateEditState { it.copy(activeMask = newMask) }
+    }
+
+    fun clearMask() {
+        updateEditState { it.copy(activeMask = null) }
+        onSliderDragFinished()
+    }
+
+    // --- Phase 3: 1:1 Pixel Loupe & Batch Preset Workflow ---
+
+    fun toggleLoupe(active: Boolean? = null) {
+        val next = active ?: !_uiState.value.isLoupeActive
+        _uiState.value = _uiState.value.copy(
+            isLoupeActive = next,
+            isEyedropperActive = if (next) false else _uiState.value.isEyedropperActive
+        )
+    }
+
+    fun updateLoupePosition(screenOffset: Offset, normOffset: Offset) {
+        _uiState.value = _uiState.value.copy(
+            loupeTouchOffset = screenOffset,
+            loupeTouchNorm = normOffset
+        )
+    }
+
+    fun copySettings() {
+        val recipe = _uiState.value.editState.createRecipeCopy()
+        _uiState.value = _uiState.value.copy(
+            copiedRecipe = recipe,
+            exportMessage = "Edit recipe copied to clipboard"
+        )
+    }
+
+    fun pasteSettings() {
+        val recipe = _uiState.value.copiedRecipe
+        if (recipe == null) {
+            _uiState.value = _uiState.value.copy(exportMessage = "No recipe copied yet")
+            return
+        }
+        val current = _uiState.value.editState
+        val merged = current.copy(
+            exposure = recipe.exposure,
+            contrast = recipe.contrast,
+            highlights = recipe.highlights,
+            shadows = recipe.shadows,
+            whites = recipe.whites,
+            blacks = recipe.blacks,
+            temperature = recipe.temperature,
+            tint = recipe.tint,
+            vibrance = recipe.vibrance,
+            saturation = recipe.saturation,
+            clarity = recipe.clarity,
+            sharpness = recipe.sharpness,
+            vignette = recipe.vignette,
+            lensDistortion = recipe.lensDistortion,
+            defringeAmount = recipe.defringeAmount,
+            hslAdjustments = recipe.hslAdjustments,
+            toneCurves = recipe.toneCurves,
+            activeMask = recipe.activeMask,
+            customLut = recipe.customLut,
+            lutIntensity = recipe.lutIntensity
+        )
+        historyManager.pushState(merged)
+        _uiState.value = _uiState.value.copy(
+            editState = merged,
+            exportMessage = "Settings applied successfully"
+        )
+        scheduleProcessing(merged)
+        syncHistoryFlags()
+    }
+
+    fun importCubeLut(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val input = context.contentResolver.openInputStream(uri)
+                if (input != null) {
+                    val lut = ImageProcessor.parseCubeLut(input)
+                    if (lut != null) {
+                        updateEditState { it.copy(customLut = lut, lutIntensity = 100f) }
+                        onSliderDragFinished()
+                        _uiState.value = _uiState.value.copy(exportMessage = "3D LUT loaded: ${lut.title}")
+                    } else {
+                        _uiState.value = _uiState.value.copy(exportMessage = "Invalid or unsupported .cube LUT file")
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(exportMessage = "Failed to load LUT: ${e.message}")
+            }
+        }
     }
 
     private fun scheduleProcessing(state: EditState) {

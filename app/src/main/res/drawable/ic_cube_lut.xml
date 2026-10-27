@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 3D Isometric LUT Cube -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round"
+        android:pathData="M12,2 L21,7 L12,12 L3,7 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round"
+        android:pathData="M3,7 L3,17 L12,22 L12,12 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round"
+        android:pathData="M21,7 L21,17 L12,22 L12,12 Z" />
+</vector>

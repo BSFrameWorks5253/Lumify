@@ -6,6 +6,8 @@ import com.lumify.editor.core.EditState
 import com.lumify.editor.core.HistoryManager
 import com.lumify.editor.core.HslAdjustment
 import com.lumify.editor.core.HslChannel
+import com.lumify.editor.core.ImageProcessor
+import com.lumify.editor.core.ToneCurves
 import com.lumify.editor.presets.PresetRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -88,5 +90,55 @@ class ImageProcessorTest {
         assertEquals(8, HslChannel.values().size)
         val defaultAdj = HslAdjustment()
         assertTrue(defaultAdj.isDefault)
+    }
+
+    @Test
+    fun toneCurvesDefaultAndLutGeneration() {
+        val curves = ToneCurves()
+        assertTrue(curves.isDefault)
+
+        val lut = ImageProcessor.buildCurveLut(curves.rgbPoints)
+        assertEquals(256, lut.size)
+        assertEquals(0, lut[0])
+        assertEquals(255, lut[255])
+        // Linear identity curve should map midpoint closely
+        assertTrue(lut[128] in 125..131)
+    }
+
+    @Test
+    fun recipeCopyStripsGeometry() {
+        val original = EditState(
+            exposure = 25f,
+            temperature = 10f,
+            rotationDegrees = 90f,
+            cropRect = CropRect(0.1f, 0.1f, 0.9f, 0.9f)
+        )
+        val recipe = original.createRecipeCopy()
+        assertEquals(25f, recipe.exposure, 0.001f)
+        assertEquals(10f, recipe.temperature, 0.001f)
+        assertEquals(0f, recipe.rotationDegrees, 0.001f)
+        assertFalse(recipe.flipHorizontal)
+        assertEquals(null, recipe.cropRect)
+    }
+
+    @Test
+    fun parseCubeLutValidContent() {
+        val cubeData = """
+            # Lumify Test LUT
+            LUT_3D_SIZE 2
+            0.0 0.0 0.0
+            1.0 0.0 0.0
+            0.0 1.0 0.0
+            1.0 1.0 0.0
+            0.0 0.0 1.0
+            1.0 0.0 1.0
+            0.0 1.0 1.0
+            1.0 1.0 1.0
+        """.trimIndent()
+
+        val parsed = ImageProcessor.parseCubeLut(cubeData.byteInputStream(), "TestLUT")
+        assertNotNull(parsed)
+        assertEquals(2, parsed!!.size)
+        assertEquals(2 * 2 * 2 * 3, parsed.table.size)
     }
 }

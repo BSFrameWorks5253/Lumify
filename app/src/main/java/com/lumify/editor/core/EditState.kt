@@ -1,5 +1,7 @@
 package com.lumify.editor.core
 
+import java.util.UUID
+
 enum class HslChannel(val displayName: String, val baseHue: Float) {
     RED("Red", 0f),
     ORANGE("Orange", 30f),
@@ -41,6 +43,57 @@ enum class AspectRatio(val label: String, val ratio: Float?) {
     PHOTO_4_3("4:3", 4f / 3f)
 }
 
+data class ToneCurvePoint(val x: Float, val y: Float)
+
+fun defaultCurvePoints(): List<ToneCurvePoint> = listOf(
+    ToneCurvePoint(0.0f, 0.0f),
+    ToneCurvePoint(0.25f, 0.25f),
+    ToneCurvePoint(0.5f, 0.5f),
+    ToneCurvePoint(0.75f, 0.75f),
+    ToneCurvePoint(1.0f, 1.0f)
+)
+
+data class ToneCurves(
+    val rgbPoints: List<ToneCurvePoint> = defaultCurvePoints(),
+    val redPoints: List<ToneCurvePoint> = defaultCurvePoints(),
+    val greenPoints: List<ToneCurvePoint> = defaultCurvePoints(),
+    val bluePoints: List<ToneCurvePoint> = defaultCurvePoints()
+) {
+    val isDefault: Boolean
+        get() = isCurveDefault(rgbPoints) && isCurveDefault(redPoints) &&
+                isCurveDefault(greenPoints) && isCurveDefault(bluePoints)
+
+    private fun isCurveDefault(points: List<ToneCurvePoint>): Boolean {
+        if (points.size != 5) return false
+        return points[0].y == 0.0f && points[1].y == 0.25f &&
+               points[2].y == 0.5f && points[3].y == 0.75f && points[4].y == 1.0f
+    }
+}
+
+enum class MaskType(val label: String) {
+    LINEAR_GRADIENT("Linear Gradient"),
+    RADIAL_GRADIENT("Radial Gradient")
+}
+
+data class SelectiveMask(
+    val id: String = UUID.randomUUID().toString(),
+    val type: MaskType = MaskType.LINEAR_GRADIENT,
+    val startX: Float = 0.5f,
+    val startY: Float = 0.15f,
+    val endX: Float = 0.5f,
+    val endY: Float = 0.65f,
+    val centerX: Float = 0.5f,
+    val centerY: Float = 0.5f,
+    val radiusX: Float = 0.35f,
+    val radiusY: Float = 0.35f,
+    val exposure: Float = 0f,
+    val contrast: Float = 0f,
+    val saturation: Float = 0f
+) {
+    val isModified: Boolean
+        get() = exposure != 0f || contrast != 0f || saturation != 0f
+}
+
 data class EditState(
     // Tone & Light
     val exposure: Float = 0f,       // -100 to 100
@@ -61,6 +114,10 @@ data class EditState(
     val sharpness: Float = 0f,      // 0 to 100
     val vignette: Float = 0f,       // 0 to 100
 
+    // Lens Correction & Defringing
+    val lensDistortion: Float = 0f, // -100 to 100 (Barrel to Pincushion)
+    val defringeAmount: Float = 0f, // 0 to 100 (Chromatic aberration removal)
+
     // Geometry & Crop
     val rotationDegrees: Float = 0f, // 0 to 360
     val fineRotation: Float = 0f,    // -45 to +45
@@ -72,6 +129,16 @@ data class EditState(
     // HSL 8-channel Color Grading
     val hslAdjustments: Map<HslChannel, HslAdjustment> = HslChannel.values().associateWith { HslAdjustment() },
 
+    // Interactive Tone Curves
+    val toneCurves: ToneCurves = ToneCurves(),
+
+    // Selective Masks
+    val activeMask: SelectiveMask? = null,
+
+    // Custom 3D LUT
+    val customLut: Lut3D? = null,
+    val lutIntensity: Float = 100f,
+
     // Active Preset
     val appliedPresetId: String? = null
 ) {
@@ -79,9 +146,46 @@ data class EditState(
         get() = exposure != 0f || contrast != 0f || highlights != 0f || shadows != 0f ||
                 whites != 0f || blacks != 0f || temperature != 0f || tint != 0f ||
                 vibrance != 0f || saturation != 0f || clarity != 0f || sharpness != 0f ||
-                vignette != 0f || rotationDegrees != 0f || fineRotation != 0f ||
+                vignette != 0f || lensDistortion != 0f || defringeAmount != 0f ||
+                rotationDegrees != 0f || fineRotation != 0f ||
                 flipHorizontal || flipVertical || cropRect != null ||
+                !toneCurves.isDefault || activeMask?.isModified == true ||
+                customLut != null ||
                 hslAdjustments.values.any { !it.isDefault } || appliedPresetId != null
+
+    /**
+     * Creates an exportable copy/paste recipe containing all tonal and color adjustments
+     * without geometry (so aspect ratio/rotation of different photos is preserved).
+     */
+    fun createRecipeCopy(): EditState {
+        return this.copy(
+            rotationDegrees = 0f,
+            fineRotation = 0f,
+            flipHorizontal = false,
+            flipVertical = false,
+            cropRect = null,
+            selectedAspectRatio = AspectRatio.ORIGINAL
+        )
+    }
+}
+
+data class Lut3D(
+    val title: String,
+    val size: Int,
+    val table: FloatArray // size * size * size * 3
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Lut3D) return false
+        return title == other.title && size == other.size && table.contentEquals(other.table)
+    }
+
+    override fun hashCode(): Int {
+        var result = title.hashCode()
+        result = 31 * result + size
+        result = 31 * result + table.contentHashCode()
+        return result
+    }
 }
 
 class HistoryManager(initialState: EditState = EditState()) {

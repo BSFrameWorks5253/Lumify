@@ -21,10 +21,12 @@ import com.lumify.editor.camera.CameraCaptureScreen
 import com.lumify.editor.ui.screens.EditorScreen
 import com.lumify.editor.ui.screens.EditorViewModel
 import com.lumify.editor.ui.screens.HomeScreen
+import com.lumify.editor.ui.screens.SplashScreen
 import com.lumify.editor.ui.theme.DarkBackground
 import com.lumify.editor.ui.theme.LumifyTheme
 
 enum class AppDestination {
+    SPLASH,
     HOME,
     EDITOR,
     CAMERA
@@ -44,7 +46,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = DarkBackground
                 ) {
-                    var currentDestination by remember { mutableStateOf(AppDestination.HOME) }
+                    var currentDestination by remember { mutableStateOf(AppDestination.SPLASH) }
 
                     // Handle incoming image from other apps (SEND or VIEW intent)
                     LaunchedEffect(intent) {
@@ -58,6 +60,14 @@ class MainActivity : ComponentActivity() {
                         label = "appNavigation"
                     ) { dest ->
                         when (dest) {
+                            AppDestination.SPLASH -> {
+                                SplashScreen(
+                                    onAnimationFinished = {
+                                        currentDestination = AppDestination.HOME
+                                    }
+                                )
+                            }
+
                             AppDestination.HOME -> {
                                 HomeScreen(
                                     onImageSelected = { uri ->
