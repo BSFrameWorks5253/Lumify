@@ -92,11 +92,16 @@ import com.lumify.editor.presets.PresetRepository
 import com.lumify.editor.ui.components.AdjustSlider
 import com.lumify.editor.ui.components.CropOverlay
 import com.lumify.editor.ui.components.HistogramView
+import android.os.Build
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import com.lumify.editor.gpu.GpuRenderEngine
+import com.lumify.editor.ui.components.ColorWheelsView
 import com.lumify.editor.ui.components.LiquidGlassButton
 import com.lumify.editor.ui.components.LiquidGlassSurface
 import com.lumify.editor.ui.components.MaskOverlay
 import com.lumify.editor.ui.components.PixelLoupe
 import com.lumify.editor.ui.components.ToneCurveView
+import com.lumify.editor.ui.components.WatermarkDialog
 import com.lumify.editor.ui.theme.AccentCyan
 import com.lumify.editor.ui.theme.DarkBackground
 import com.lumify.editor.ui.theme.DarkSurface
@@ -202,12 +207,19 @@ fun EditorScreen(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            translationX = offset.x,
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = offset.x
                             translationY = offset.y
-                        )
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && GpuRenderEngine.isGpuAccelerationSupported) {
+                                renderEffect = GpuRenderEngine.createGpuRenderEffect(
+                                    uiState.editState,
+                                    canvasSize.width.toFloat(),
+                                    canvasSize.height.toFloat()
+                                )?.asComposeRenderEffect()
+                            }
+                        }
                 )
 
                 // Crop Overlay when in Crop Tab
@@ -370,6 +382,26 @@ fun EditorScreen(
                         )
                     }
 
+                    // Watermark Customization
+                    IconButton(onClick = { viewModel.setShowWatermarkDialog(true) }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_watermark),
+                            contentDescription = "Watermark",
+                            tint = if (uiState.editState.watermark.enabled) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    // Add to Batch Export Queue
+                    IconButton(onClick = { viewModel.addToBatchQueue() }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_batch_queue),
+                            contentDescription = "Batch Queue",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
                     // Undo
                     IconButton(
                         onClick = { viewModel.undo() },
@@ -498,6 +530,12 @@ fun EditorScreen(
                         EditorTab.LIGHT -> LightControls(viewModel, uiState)
                         EditorTab.COLOR -> ColorControls(viewModel, uiState)
                         EditorTab.CURVES -> CurvesControls(viewModel, uiState)
+                        EditorTab.GRADING -> ColorWheelsView(
+                            colorGrading = uiState.editState.colorGrading,
+                            onColorGradingChange = { updated ->
+                                viewModel.updateEditState { it.copy(colorGrading = updated) }
+                            }
+                        )
                         EditorTab.HSL -> HslControls(viewModel, uiState)
                         EditorTab.MASKS -> MasksControls(viewModel, uiState)
                         EditorTab.OPTICS -> OpticsControls(viewModel, uiState)
@@ -509,7 +547,7 @@ fun EditorScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Bottom Pro Tab Navigation Ribbon (Scrollable for all 9 studio tools)
+                // Bottom Pro Tab Navigation Ribbon (Scrollable for all 10 studio tools)
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -539,6 +577,14 @@ fun EditorScreen(
                             tab = EditorTab.CURVES,
                             activeTab = uiState.activeTab,
                             onClick = { viewModel.setActiveTab(EditorTab.CURVES) }
+                        )
+                    }
+                    item {
+                        EditorTabItem(
+                            icon = painterResource(id = R.drawable.ic_color_wheels),
+                            tab = EditorTab.GRADING,
+                            activeTab = uiState.activeTab,
+                            onClick = { viewModel.setActiveTab(EditorTab.GRADING) }
                         )
                     }
                     item {
@@ -600,6 +646,15 @@ fun EditorScreen(
                 onConfirmExport = { format, quality, preserveExif ->
                     viewModel.exportImage(context, format, quality, preserveExif)
                 }
+            )
+        }
+
+        // Photographer Watermark Customization Dialog
+        if (uiState.showWatermarkDialog) {
+            WatermarkDialog(
+                currentConfig = uiState.editState.watermark,
+                onDismiss = { viewModel.setShowWatermarkDialog(false) },
+                onSaveConfig = { viewModel.updateWatermarkConfig(it) }
             )
         }
 

@@ -38,6 +38,11 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.painterResource
+import com.lumify.editor.R
+import com.lumify.editor.export.BatchQueueManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,7 +118,70 @@ fun HomeScreen(
                 letterSpacing = 1.sp
             )
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
+
+            val batchQueue by BatchQueueManager.queue.collectAsState()
+            val isBatchExporting by BatchQueueManager.isExporting.collectAsState()
+
+            if (batchQueue.isNotEmpty()) {
+                LiquidGlassSurface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    backgroundColor = AccentCyan.copy(alpha = 0.12f),
+                    borderWidth = 1.5.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_batch_queue),
+                                contentDescription = "Batch Queue",
+                                tint = AccentCyan,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Batch Export Queue",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${batchQueue.size} photos queued for export",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        LiquidGlassButton(
+                            onClick = {
+                                if (isBatchExporting) {
+                                    BatchQueueManager.cancelBatchExport(context)
+                                } else {
+                                    BatchQueueManager.startBatchExport(context)
+                                }
+                            },
+                            modifier = Modifier.height(34.dp),
+                            backgroundColor = AccentCyan.copy(alpha = 0.3f)
+                        ) {
+                            Text(
+                                text = if (isBatchExporting) "Cancel Export" else "Export All",
+                                color = AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
             // Main Action Card: Open from Gallery / Files
             LiquidGlassSurface(

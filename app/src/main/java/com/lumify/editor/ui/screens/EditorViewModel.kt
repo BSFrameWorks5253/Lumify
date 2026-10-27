@@ -34,10 +34,16 @@ import androidx.compose.ui.geometry.Offset
 import com.lumify.editor.core.MaskType
 import com.lumify.editor.core.SelectiveMask
 
+import com.lumify.editor.core.WatermarkConfig
+import com.lumify.editor.export.BatchQueueItem
+import com.lumify.editor.export.BatchQueueManager
+import com.lumify.editor.gpu.GpuRenderEngine
+
 enum class EditorTab(val label: String) {
     LIGHT("Light"),
     COLOR("Color"),
     CURVES("Curves"),
+    GRADING("Grading"),
     HSL("HSL"),
     MASKS("Masks"),
     OPTICS("Optics"),
@@ -59,12 +65,14 @@ data class EditorUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val showExportDialog: Boolean = false,
+    val showWatermarkDialog: Boolean = false,
     val exportMessage: String? = null,
     val isEyedropperActive: Boolean = false,
     val isLoupeActive: Boolean = false,
     val loupeTouchOffset: Offset = Offset.Zero,
     val loupeTouchNorm: Offset = Offset(0.5f, 0.5f),
-    val copiedRecipe: EditState? = null
+    val copiedRecipe: EditState? = null,
+    val isGpuAccelerationSupported: Boolean = GpuRenderEngine.isGpuAccelerationSupported
 )
 
 class EditorViewModel : ViewModel() {
@@ -340,6 +348,48 @@ class EditorViewModel : ViewModel() {
                 _uiState.value = _uiState.value.copy(exportMessage = "Failed to load LUT: ${e.message}")
             }
         }
+    }
+
+    // --- Watermark & Batch Export Pipeline ---
+
+    fun setShowWatermarkDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showWatermarkDialog = show)
+    }
+
+    fun updateWatermarkConfig(config: WatermarkConfig) {
+        updateEditState { it.copy(watermark = config) }
+        onSliderDragFinished()
+    }
+
+    fun addToBatchQueue(format: ExportFormat = ExportFormat.JPEG, quality: Int = 95) {
+        val bmp = _uiState.value.originalBitmap ?: return
+        val currentEdit = _uiState.value.editState
+        val title = _uiState.value.metadata?.format ?: "Photo"
+
+        BatchQueueManager.addItem(
+            BatchQueueItem(
+                title = title,
+                bitmap = bmp,
+                editState = currentEdit,
+                format = format,
+                quality = quality
+            )
+        )
+        val count = BatchQueueManager.queue.value.size
+        _uiState.value = _uiState.value.copy(
+            exportMessage = "Added to Batch Queue ($count photos queued)"
+        )
+    }
+
+    fun startBatchExport(context: Context) {
+        if (BatchQueueManager.queue.value.isEmpty()) {
+            _uiState.value = _uiState.value.copy(exportMessage = "Batch queue is empty. Add photos to queue first.")
+            return
+        }
+        BatchQueueManager.startBatchExport(context)
+        _uiState.value = _uiState.value.copy(
+            exportMessage = "Batch export started in background notification"
+        )
     }
 
     private fun scheduleProcessing(state: EditState) {

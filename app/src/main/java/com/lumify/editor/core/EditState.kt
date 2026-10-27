@@ -94,6 +94,49 @@ data class SelectiveMask(
         get() = exposure != 0f || contrast != 0f || saturation != 0f
 }
 
+data class ColorWheelChannel(
+    val hue: Float = 0f,         // 0 to 360
+    val saturation: Float = 0f,  // 0 to 100
+    val luminance: Float = 0f    // -100 to 100
+) {
+    val isDefault: Boolean get() = saturation == 0f && luminance == 0f
+}
+
+data class ColorGradingState(
+    val shadows: ColorWheelChannel = ColorWheelChannel(),
+    val midtones: ColorWheelChannel = ColorWheelChannel(),
+    val highlights: ColorWheelChannel = ColorWheelChannel(),
+    val balance: Float = 0f,     // -100 to 100
+    val blending: Float = 50f    // 0 to 100
+) {
+    val isDefault: Boolean
+        get() = shadows.isDefault && midtones.isDefault && highlights.isDefault && balance == 0f && blending == 50f
+}
+
+enum class WatermarkType {
+    TEXT,
+    GRAPHIC
+}
+
+enum class WatermarkPosition(val label: String) {
+    BOTTOM_RIGHT("Bottom Right"),
+    BOTTOM_LEFT("Bottom Left"),
+    TOP_RIGHT("Top Right"),
+    TOP_LEFT("Top Left"),
+    CENTER("Center")
+}
+
+data class WatermarkConfig(
+    val enabled: Boolean = false,
+    val type: WatermarkType = WatermarkType.TEXT,
+    val text: String = "© Lumify Photography",
+    val graphicUri: String? = null,
+    val position: WatermarkPosition = WatermarkPosition.BOTTOM_RIGHT,
+    val opacity: Float = 0.85f,   // 0.1 to 1.0
+    val sizePercent: Float = 14f, // 5% to 40%
+    val marginPercent: Float = 3f
+)
+
 data class EditState(
     // Tone & Light
     val exposure: Float = 0f,       // -100 to 100
@@ -135,6 +178,12 @@ data class EditState(
     // Selective Masks
     val activeMask: SelectiveMask? = null,
 
+    // 3-Way Color Wheels (Cinema Split Toning)
+    val colorGrading: ColorGradingState = ColorGradingState(),
+
+    // Photographer Watermark
+    val watermark: WatermarkConfig = WatermarkConfig(),
+
     // Custom 3D LUT
     val customLut: Lut3D? = null,
     val lutIntensity: Float = 100f,
@@ -150,6 +199,7 @@ data class EditState(
                 rotationDegrees != 0f || fineRotation != 0f ||
                 flipHorizontal || flipVertical || cropRect != null ||
                 !toneCurves.isDefault || activeMask?.isModified == true ||
+                !colorGrading.isDefault || watermark.enabled ||
                 customLut != null ||
                 hslAdjustments.values.any { !it.isDefault } || appliedPresetId != null
 

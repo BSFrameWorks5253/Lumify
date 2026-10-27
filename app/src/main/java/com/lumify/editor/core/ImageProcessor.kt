@@ -33,7 +33,14 @@ object ImageProcessor {
             transformed.recycle()
         }
 
-        processed
+        // 3. Photographer Watermarking (Text or Graphic)
+        val finalResult = if (state.watermark.enabled) {
+            applyWatermark(processed, state.watermark)
+        } else {
+            processed
+        }
+
+        finalResult
     }
 
     private fun applySpatialTransforms(source: Bitmap, state: EditState): Bitmap {
@@ -313,6 +320,16 @@ object ImageProcessor {
                     gClamped = (gClamped * vig).toInt()
                     bClamped = (bClamped * vig).toInt()
                 }
+            }
+
+            // 3-Way Hollywood Color Grading (Cinema Split Toning)
+            if (!state.colorGrading.isDefault) {
+                val (cgR, cgG, cgB) = applyColorGrading(rClamped, gClamped, bClamped, state.colorGrading)
+                rClamped = cgR
+                gClamped = cgG
+                bClamped = cgB
+            }
+
             // 3D LUT Evaluation
             if (state.customLut != null) {
                 val (lutR, lutG, lutB) = applyLut3D(state.customLut, rClamped, gClamped, bClamped, state.lutIntensity)
@@ -351,6 +368,109 @@ object ImageProcessor {
                 (1f - dist).coerceIn(0f, 1f).pow(1.5f)
             }
         }
+    }
+
+    private fun applyColorGrading(
+        r: Int, g: Int, b: Int,
+        grading: ColorGradingState
+    ): Triple<Int, Int, Int> {
+        val lum = (0.299f * r + 0.587f * g + 0.114f * b) / 255f
+        val pivot = (0.5f + grading.balance / 200f).coerceIn(0.1f, 0.9f)
+        val blend = (grading.blending / 100f).coerceIn(0.1f, 1f)
+
+        val sWeight = ((pivot + blend * 0.5f - lum) / blend).coerceIn(0f, 1f)
+        val hWeight = ((lum - (pivot - blend * 0.5f)) / blend).coerceIn(0f, 1f)
+        val mWeight = (1f - abs(lum - pivot) * 2f).coerceIn(0f, 1f)
+
+        var rf = r.toFloat()
+        var gf = g.toFloat()
+        var bf = b.toFloat()
+
+        if (!grading.shadows.isDefault) {
+            val d = com.lumify.editor.gpu.GpuShaderSource.hslToRgbDelta(grading.shadows.hue, grading.shadows.saturation)
+            rf += (d[0] * 80f * sWeight) + (grading.shadows.luminance * 0.4f * sWeight)
+            gf += (d[1] * 80f * sWeight) + (grading.shadows.luminance * 0.4f * sWeight)
+            bf += (d[2] * 80f * sWeight) + (grading.shadows.luminance * 0.4f * sWeight)
+        }
+
+        if (!grading.midtones.isDefault) {
+            val d = com.lumify.editor.gpu.GpuShaderSource.hslToRgbDelta(grading.midtones.hue, grading.midtones.saturation)
+            rf += (d[0] * 80f * mWeight) + (grading.midtones.luminance * 0.4f * mWeight)
+            gf += (d[1] * 80f * mWeight) + (grading.midtones.luminance * 0.4f * mWeight)
+            bf += (d[2] * 80f * mWeight) + (grading.midtones.luminance * 0.4f * mWeight)
+        }
+
+        if (!grading.highlights.isDefault) {
+            val d = com.lumify.editor.gpu.GpuShaderSource.hslToRgbDelta(grading.highlights.hue, grading.highlights.saturation)
+            rf += (d[0] * 80f * hWeight) + (grading.highlights.luminance * 0.4f * hWeight)
+            gf += (d[1] * 80f * hWeight) + (grading.highlights.luminance * 0.4f * hWeight)
+            bf += (d[2] * 80f * hWeight) + (grading.highlights.luminance * 0.4f * hWeight)
+        }
+
+        return Triple(rf.toInt().coerceIn(0, 255), gf.toInt().coerceIn(0, 255), bf.toInt().coerceIn(0, 255))
+    }
+
+    /**
+     * Applies customizable photographer watermark (Text or Graphic logo) onto exported bitmap.
+     */
+    fun applyWatermark(
+        source: Bitmap,
+        config: WatermarkConfig,
+        graphicBitmap: Bitmap? = null
+    ): Bitmap {
+        if (!config.enabled) return source
+        val outBmp = source.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = android.graphics.Canvas(outBmp)
+        val w = outBmp.width.toFloat()
+        val h = outBmp.height.toFloat()
+
+        val margin = (config.marginPercent / 100f) * min(w, h)
+        val alphaInt = (config.opacity.coerceIn(0.1f, 1f) * 255).toInt()
+
+        if (config.type == WatermarkType.TEXT) {
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                alpha = alphaInt
+                textSize = (config.sizePercent / 100f) * (w * 0.25f).coerceAtLeast(24f)
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                setShadowLayer(5f, 2f, 2f, android.graphics.Color.BLACK)
+            }
+
+            val textBounds = android.graphics.Rect()
+            paint.getTextBounds(config.text, 0, config.text.length, textBounds)
+            val textW = textBounds.width().toFloat()
+            val textH = textBounds.height().toFloat()
+
+            val (x, y) = when (config.position) {
+                WatermarkPosition.BOTTOM_RIGHT -> Pair(w - textW - margin, h - margin)
+                WatermarkPosition.BOTTOM_LEFT -> Pair(margin, h - margin)
+                WatermarkPosition.TOP_RIGHT -> Pair(w - textW - margin, margin + textH)
+                WatermarkPosition.TOP_LEFT -> Pair(margin, margin + textH)
+                WatermarkPosition.CENTER -> Pair((w - textW) / 2f, (h + textH) / 2f)
+            }
+            canvas.drawText(config.text, x, y, paint)
+        } else if (config.type == WatermarkType.GRAPHIC && graphicBitmap != null) {
+            val targetW = (config.sizePercent / 100f * w).toInt().coerceAtLeast(30)
+            val targetH = (targetW.toFloat() / graphicBitmap.width * graphicBitmap.height).toInt().coerceAtLeast(30)
+            val scaledGraphic = Bitmap.createScaledBitmap(graphicBitmap, targetW, targetH, true)
+
+            val (gx, gy) = when (config.position) {
+                WatermarkPosition.BOTTOM_RIGHT -> Pair(w - targetW - margin, h - targetH - margin)
+                WatermarkPosition.BOTTOM_LEFT -> Pair(margin, h - targetH - margin)
+                WatermarkPosition.TOP_RIGHT -> Pair(w - targetW - margin, margin)
+                WatermarkPosition.TOP_LEFT -> Pair(margin, margin)
+                WatermarkPosition.CENTER -> Pair((w - targetW) / 2f, (h - targetH) / 2f)
+            }
+
+            val gPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                alpha = alphaInt
+            }
+            canvas.drawBitmap(scaledGraphic, gx, gy, gPaint)
+            scaledGraphic.recycle()
+        }
+
+        if (source != outBmp) source.recycle()
+        return outBmp
     }
 
     /**

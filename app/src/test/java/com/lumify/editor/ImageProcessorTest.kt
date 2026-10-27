@@ -141,4 +141,23 @@ class ImageProcessorTest {
         assertEquals(2, parsed!!.size)
         assertEquals(2 * 2 * 2 * 3, parsed.table.size)
     }
+
+    @Test
+    fun colorGradingStateDefaultCheck() {
+        val grading = com.lumify.editor.core.ColorGradingState()
+        assertTrue(grading.isDefault)
+
+        val modified = grading.copy(
+            shadows = com.lumify.editor.core.ColorWheelChannel(hue = 210f, saturation = 30f)
+        )
+        assertFalse(modified.isDefault)
+    }
+
+    @Test
+    fun watermarkConfigDefaults() {
+        val wm = com.lumify.editor.core.WatermarkConfig()
+        assertFalse(wm.enabled)
+        assertEquals(com.lumify.editor.core.WatermarkPosition.BOTTOM_RIGHT, wm.position)
+        assertEquals("© Lumify Photography", wm.text)
+    }
 }
