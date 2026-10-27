@@ -20,6 +20,8 @@ jobs:
   build:
     name: Build Lumify (${{ inputs.target || 'all' }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -125,3 +127,25 @@ jobs:
           name: Lumify-Release-AAB
           path: app/build/outputs/bundle/**/*.aab
           retention-days: 14
+
+      - name: Prepare Release Assets
+        if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        run: |
+          mkdir -p release-assets
+          find app/build/outputs/apk/release -name "*.apk" -exec cp {} release-assets/Lumify-v1.0.0-release.apk \; 2>/dev/null || true
+          find app/build/outputs/apk/debug -name "*.apk" -exec cp {} release-assets/Lumify-v1.0.0-debug.apk \; 2>/dev/null || true
+          find app/build/outputs/bundle/release -name "*.aab" -exec cp {} release-assets/Lumify-v1.0.0-release.aab \; 2>/dev/null || true
+          ls -la release-assets
+
+      - name: Publish GitHub Release
+        if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: Lumify v1.0.0
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
