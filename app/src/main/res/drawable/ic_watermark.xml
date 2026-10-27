@@ -11,7 +11,7 @@
     <path
         android:strokeColor="#00E5FF"
         android:strokeWidth="1.6"
-        android:pathData="M 12,8 A 4,4 0 1 0 12,16 A 4,4 0 1 0 12,8 Z" />
+        android:pathData="M 12,12 m -4,0 a 4,4 0 1,0 8,0 a 4,4 0 1,0 -8,0" />
     <path
         android:strokeColor="#00E5FF"
         android:strokeWidth="1.5"

@@ -7,23 +7,23 @@
     <path
         android:strokeColor="#00E5FF"
         android:strokeWidth="1.6"
-        android:pathData="M 12,3 A 5,5 0 1 0 12,13 A 5,5 0 1 0 12,3 Z" />
+        android:pathData="M 12,8 m -5,0 a 5,5 0 1,0 10,0 a 5,5 0 1,0 -10,0" />
     <path
         android:strokeColor="#FFFFFF"
         android:strokeWidth="1.6"
-        android:pathData="M 7,12 A 5,5 0 1 0 7,22 A 5,5 0 1 0 7,12 Z" />
+        android:pathData="M 7,17 m -5,0 a 5,5 0 1,0 10,0 a 5,5 0 1,0 -10,0" />
     <path
         android:strokeColor="#00E5FF"
         android:strokeWidth="1.6"
-        android:pathData="M 17,12 A 5,5 0 1 0 17,22 A 5,5 0 1 0 17,12 Z" />
+        android:pathData="M 17,17 m -5,0 a 5,5 0 1,0 10,0 a 5,5 0 1,0 -10,0" />
     <!-- Center core dots -->
     <path
         android:fillColor="#00E5FF"
-        android:pathData="M 12,7.5 A 0.8,0.8 0 1 0 12,8.5 A 0.8,0.8 0 1 0 12,7.5 Z" />
+        android:pathData="M 12,8 m -0.8,0 a 0.8,0.8 0 1,0 1.6,0 a 0.8,0.8 0 1,0 -1.6,0" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M 7,16.5 A 0.8,0.8 0 1 0 7,17.5 A 0.8,0.8 0 1 0 7,16.5 Z" />
+        android:pathData="M 7,17 m -0.8,0 a 0.8,0.8 0 1,0 1.6,0 a 0.8,0.8 0 1,0 -1.6,0" />
     <path
         android:fillColor="#00E5FF"
-        android:pathData="M 17,16.5 A 0.8,0.8 0 1 0 17,17.5 A 0.8,0.8 0 1 0 17,16.5 Z" />
+        android:pathData="M 17,17 m -0.8,0 a 0.8,0.8 0 1,0 1.6,0 a 0.8,0.8 0 1,0 -1.6,0" />
 </vector>

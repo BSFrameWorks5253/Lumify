@@ -29,9 +29,13 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Accept Android SDK Licenses
+      - name: Configure Android SDK & Licenses
         run: |
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           yes | sdkmanager --licenses || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -53,7 +57,9 @@ jobs:
 
       - name: Build Debug APK
         if: ${{ inputs.target == 'debug_apk' || inputs.target == 'all' }}
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_debug.log
 
       - name: Build Release APK
         if: ${{ inputs.target == 'release_apk' || inputs.target == 'all' }}
@@ -61,7 +67,9 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_release.log
 
       - name: Build Release AAB (Google Play Store Bundle)
         if: ${{ inputs.target == 'release_aab' || inputs.target == 'all' }}
@@ -69,7 +77,36 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew bundleRelease --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew bundleRelease --stacktrace --no-daemon 2>&1 | tee build_bundle.log
+
+      - name: Publish Diagnostic Summary
+        if: always()
+        run: |
+          echo "## Build Diagnostics" >> $GITHUB_STEP_SUMMARY
+          if [ -f build_debug.log ]; then
+            echo "### Debug Build Log (Last 120 lines)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 build_debug.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f build_release.log ]; then
+            echo "### Release Build Log (Last 120 lines)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 build_release.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Build Logs & Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-logs
+          path: |
+            *.log
+            app/build/reports/
+          if-no-files-found: ignore
 
       - name: Upload APK Artifacts
         if: ${{ inputs.target == 'debug_apk' || inputs.target == 'release_apk' || inputs.target == 'all' }}
