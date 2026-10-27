@@ -477,7 +477,7 @@ class EditorViewModel : ViewModel() {
                 it.flush()
                 true
             } ?: false
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             false
         } finally {
             outputStream?.close()

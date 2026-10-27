@@ -74,7 +74,7 @@ fun CameraCaptureScreen(
                             preview,
                             imageCapture
                         )
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {}
                 }, ContextCompat.getMainExecutor(ctx))
                 previewView
             },

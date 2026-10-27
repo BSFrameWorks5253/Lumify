@@ -31,7 +31,7 @@ object GpuRenderEngine {
             val shader = getOrCreateShader()
             updateShaderUniforms(shader, state, width, height)
             RenderEffect.createRuntimeShaderEffect(shader, "image")
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             null
         }
     }

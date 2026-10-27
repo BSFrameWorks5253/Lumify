@@ -87,7 +87,7 @@ object RawImageDecoder {
                     dateTime = exif.getAttribute(ExifInterface.TAG_DATETIME)
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Non-fatal if EXIF is missing or malformed
         }
 
@@ -125,7 +125,7 @@ object RawImageDecoder {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 decodedBitmap = BitmapFactory.decodeStream(stream, null, decodeOptions)
             }
-        } catch (_: OutOfMemoryError) {
+        } catch (e: OutOfMemoryError) {
             // Fallback with larger sample size
             decodeOptions.inSampleSize = sampleSize * 2
             context.contentResolver.openInputStream(uri)?.use { stream ->

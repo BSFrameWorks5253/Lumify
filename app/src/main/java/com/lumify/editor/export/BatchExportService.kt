@@ -81,7 +81,7 @@ class BatchExportService : Service() {
                     val fileName = "LUMIFY_BATCH_${System.currentTimeMillis()}_${i + 1}.${item.format.extension.lowercase().substringBefore(' ')}"
                     val saved = saveToGallery(finalBitmap, fileName, item.format.compressFormat, item.quality)
                     if (saved) successCount++
-                } catch (_: Exception) {
+                } catch (e: Exception) {
                 }
             }
 
@@ -170,7 +170,7 @@ class BatchExportService : Service() {
                 it.flush()
                 true
             } ?: false
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             false
         } finally {
             outputStream?.close()
