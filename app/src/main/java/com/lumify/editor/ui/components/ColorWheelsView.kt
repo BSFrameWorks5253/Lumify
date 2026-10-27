@@ -1,5 +1,7 @@
 package com.lumify.editor.ui.components
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,9 +78,12 @@ fun ColorWheelsView(
         WheelRange.HIGHLIGHTS -> colorGrading.highlights
     }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .verticalScroll(scrollState)
             .padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -130,10 +135,10 @@ fun ColorWheelsView(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Center Area: Color Disc & Draggable Puck
-        val wheelSize = 134.dp
+        val wheelSize = 126.dp
         Box(
             modifier = Modifier
                 .size(wheelSize)

@@ -60,7 +60,8 @@ enum class CurveChannel(val label: String, val color: Color) {
 fun ToneCurveView(
     curves: ToneCurves,
     onCurvesChange: (ToneCurves) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canvasDimension: androidx.compose.ui.unit.Dp = 175.dp
 ) {
     var selectedChannel by remember { mutableStateOf(CurveChannel.RGB) }
     var canvasSize by remember { mutableStateOf(IntSize(1, 1)) }
@@ -76,7 +77,7 @@ fun ToneCurveView(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Channel Selector Ribbon
@@ -109,12 +110,12 @@ fun ToneCurveView(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Interactive Tone Curve Canvas
         Box(
             modifier = Modifier
-                .size(190.dp)
+                .size(canvasDimension)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black.copy(alpha = 0.6f))
                 .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))

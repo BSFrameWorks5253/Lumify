@@ -52,7 +52,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.widthIn
 import com.lumify.editor.core.ImageMetadata
+import com.lumify.editor.ui.components.AmbientLiquidBackdrop
 import com.lumify.editor.ui.components.LiquidGlassButton
 import com.lumify.editor.ui.components.LiquidGlassSurface
 import com.lumify.editor.ui.components.LumifyLogoTile
@@ -82,19 +84,20 @@ fun HomeScreen(
         uri?.let { onImageSelected(it) }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(scrollState)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+    AmbientLiquidBackdrop {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 680.dp)
+                    .statusBarsPadding()
+                    .verticalScroll(scrollState)
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             Spacer(modifier = Modifier.height(24.dp))
 
             // Adobe-style Lumify App Tile Logo with Aperture Iris
@@ -361,6 +364,7 @@ fun HomeScreen(
                 description = "Hardware-accelerated frosted glass panels with specular rim lighting and tactile haptic controls."
             )
         }
+    }
     }
 }
 

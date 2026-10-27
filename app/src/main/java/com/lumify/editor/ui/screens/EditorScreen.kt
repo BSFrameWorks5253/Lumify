@@ -17,11 +17,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.Dp
+import com.lumify.editor.ui.components.AmbientLiquidBackdrop
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -34,6 +37,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -141,11 +145,25 @@ fun EditorScreen(
     var touchNormPos by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
     var touchScreenPos by remember { mutableStateOf(Offset(200f, 200f)) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-    ) {
+    AmbientLiquidBackdrop(enableDrift = false) {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val screenHeight = maxHeight
+            val controlPanelHeight = when {
+                screenHeight < 620.dp -> 180.dp
+                screenHeight < 780.dp -> 230.dp
+                else -> 255.dp
+            }
+            val curveCanvasSize = when {
+                screenHeight < 620.dp -> 150.dp
+                screenHeight < 780.dp -> 175.dp
+                else -> 195.dp
+            }
+
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
         // 1. Image Canvas & Interactive Viewport
         val displayBitmap = if (uiState.isComparing) uiState.originalBitmap else uiState.previewBitmap
         val original = uiState.originalBitmap
@@ -336,6 +354,9 @@ fun EditorScreen(
 
                 // Studio Precision Controls (Loupe, Eyedropper, Recipe, History)
                 Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -524,12 +545,12 @@ fun EditorScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(230.dp)
+                        .height(controlPanelHeight)
                 ) {
                     when (uiState.activeTab) {
                         EditorTab.LIGHT -> LightControls(viewModel, uiState)
                         EditorTab.COLOR -> ColorControls(viewModel, uiState)
-                        EditorTab.CURVES -> CurvesControls(viewModel, uiState)
+                        EditorTab.CURVES -> CurvesControls(viewModel, uiState, curveCanvasSize)
                         EditorTab.GRADING -> ColorWheelsView(
                             colorGrading = uiState.editState.colorGrading,
                             onColorGradingChange = { updated ->
@@ -663,6 +684,8 @@ fun EditorScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 85.dp)
         )
+    }
+    }
     }
 }
 
@@ -806,7 +829,11 @@ private fun ColorControls(viewModel: EditorViewModel, uiState: EditorUiState) {
 }
 
 @Composable
-private fun CurvesControls(viewModel: EditorViewModel, uiState: EditorUiState) {
+private fun CurvesControls(
+    viewModel: EditorViewModel,
+    uiState: EditorUiState,
+    canvasDimension: Dp = 175.dp
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -814,6 +841,7 @@ private fun CurvesControls(viewModel: EditorViewModel, uiState: EditorUiState) {
     ) {
         ToneCurveView(
             curves = uiState.editState.toneCurves,
+            canvasDimension = canvasDimension,
             onCurvesChange = { updated ->
                 viewModel.updateEditState { it.copy(toneCurves = updated) }
             }
