@@ -1,6 +1,8 @@
 name: Build & Sign Android APK & Bundle
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       target:
@@ -16,7 +18,7 @@ on:
 
 jobs:
   build:
-    name: Build Lumify (${{ inputs.target }})
+    name: Build Lumify (${{ inputs.target || 'all' }})
     runs-on: ubuntu-latest
 
     steps:
@@ -56,13 +58,13 @@ jobs:
           fi
 
       - name: Build Debug APK
-        if: ${{ inputs.target == 'debug_apk' || inputs.target == 'all' }}
+        if: ${{ inputs.target == '' || inputs.target == 'debug_apk' || inputs.target == 'all' }}
         run: |
           set -o pipefail
           ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_debug.log
 
       - name: Build Release APK
-        if: ${{ inputs.target == 'release_apk' || inputs.target == 'all' }}
+        if: ${{ inputs.target == '' || inputs.target == 'release_apk' || inputs.target == 'all' }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -72,7 +74,7 @@ jobs:
           ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_release.log
 
       - name: Build Release AAB (Google Play Store Bundle)
-        if: ${{ inputs.target == 'release_aab' || inputs.target == 'all' }}
+        if: ${{ inputs.target == '' || inputs.target == 'release_aab' || inputs.target == 'all' }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -109,7 +111,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload APK Artifacts
-        if: ${{ inputs.target == 'debug_apk' || inputs.target == 'release_apk' || inputs.target == 'all' }}
+        if: ${{ inputs.target == '' || inputs.target == 'debug_apk' || inputs.target == 'release_apk' || inputs.target == 'all' }}
         uses: actions/upload-artifact@v4
         with:
           name: Lumify-APKs
@@ -117,7 +119,7 @@ jobs:
           retention-days: 14
 
       - name: Upload AAB Play Store Bundle
-        if: ${{ inputs.target == 'release_aab' || inputs.target == 'all' }}
+        if: ${{ inputs.target == '' || inputs.target == 'release_aab' || inputs.target == 'all' }}
         uses: actions/upload-artifact@v4
         with:
           name: Lumify-Release-AAB

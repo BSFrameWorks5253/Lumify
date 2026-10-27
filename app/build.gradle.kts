@@ -40,6 +40,8 @@ android {
             val releaseConfig = signingConfigs.getByName("release")
             if (releaseConfig.storeFile?.exists() == true) {
                 signingConfig = releaseConfig
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }
