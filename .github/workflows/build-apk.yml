@@ -40,12 +40,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: Decode Release Keystore (if GitHub Secret provided)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-keystore.jks" >> $GITHUB_ENV
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-keystore.jks" >> $GITHUB_ENV
+            echo "Release keystore decoded successfully."
+          else
+            echo "No custom release keystore secret provided. Building without custom signature."
+          fi
 
       - name: Build Debug APK
         if: ${{ inputs.target == 'debug_apk' || inputs.target == 'all' }}
