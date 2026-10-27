@@ -50,6 +50,7 @@ import com.lumify.editor.ui.theme.TextSecondary
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -167,7 +168,7 @@ fun ColorWheelsView(
                         detectDragGestures { change, _ ->
                             change.consume()
                             val center = Offset(size.width / 2f, size.height / 2f)
-                            val radius = size.minDimension / 2f - 8.dp.toPx()
+                            val radius = min(size.width, size.height) / 2f - 8.dp.toPx()
 
                             val dx = change.position.x - center.x
                             val dy = change.position.y - center.y
