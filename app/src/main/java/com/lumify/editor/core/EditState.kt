@@ -146,8 +146,8 @@ enum class SelectiveParam(val label: String, val shortName: String) {
 
 data class SelectivePoint(
     val id: String = UUID.randomUUID().toString(),
-    val normX: Float, // 0.0 to 1.0
-    val normY: Float, // 0.0 to 1.0
+    val normX: Float = 0.5f, // 0.0 to 1.0
+    val normY: Float = 0.5f, // 0.0 to 1.0
     val radius: Float = 0.25f, // 0.05 to 0.8
     val brightness: Float = 0f, // -100 to +100
     val contrast: Float = 0f,   // -100 to +100
@@ -178,11 +178,11 @@ data class DoubleExposureState(
     val isDefault: Boolean get() = secondaryImageUri == null
 }
 
-data class HealingPoint(val x: Float, val y: Float)
+data class HealingPoint(val x: Float = 0f, val y: Float = 0f)
 
 data class HealingStroke(
     val id: String = UUID.randomUUID().toString(),
-    val points: List<HealingPoint>,
+    val points: List<HealingPoint> = emptyList(),
     val radius: Float = 0.04f
 )
 
