@@ -137,6 +137,55 @@ data class WatermarkConfig(
     val marginPercent: Float = 3f
 )
 
+enum class SelectiveParam(val label: String, val shortName: String) {
+    BRIGHTNESS("Brightness", "B"),
+    CONTRAST("Contrast", "C"),
+    SATURATION("Saturation", "S"),
+    STRUCTURE("Structure", "St")
+}
+
+data class SelectivePoint(
+    val id: String = UUID.randomUUID().toString(),
+    val normX: Float, // 0.0 to 1.0
+    val normY: Float, // 0.0 to 1.0
+    val radius: Float = 0.25f, // 0.05 to 0.8
+    val brightness: Float = 0f, // -100 to +100
+    val contrast: Float = 0f,   // -100 to +100
+    val saturation: Float = 0f, // -100 to +100
+    val structure: Float = 0f,  // -100 to +100
+    val activeParam: SelectiveParam = SelectiveParam.BRIGHTNESS
+) {
+    val isDefault: Boolean
+        get() = brightness == 0f && contrast == 0f && saturation == 0f && structure == 0f
+}
+
+enum class DoubleExposureBlendMode(val label: String) {
+    NORMAL("Normal"),
+    LIGHTEN("Lighten"),
+    DARKEN("Darken"),
+    ADD("Add"),
+    OVERLAY("Overlay"),
+    SCREEN("Screen"),
+    MULTIPLY("Multiply"),
+    SUBTRACT("Subtract")
+}
+
+data class DoubleExposureState(
+    val secondaryImageUri: String? = null,
+    val opacity: Float = 0.6f, // 0.0 to 1.0
+    val blendMode: DoubleExposureBlendMode = DoubleExposureBlendMode.SCREEN
+) {
+    val isDefault: Boolean get() = secondaryImageUri == null
+}
+
+data class HealingPoint(val x: Float, val y: Float)
+
+data class HealingStroke(
+    val id: String = UUID.randomUUID().toString(),
+    val points: List<HealingPoint>,
+    val radius: Float = 0.04f
+)
+
 data class EditState(
     // Tone & Light
     val exposure: Float = 0f,       // -100 to 100
@@ -181,12 +230,46 @@ data class EditState(
     // 3-Way Color Wheels (Cinema Split Toning)
     val colorGrading: ColorGradingState = ColorGradingState(),
 
+    // Snapseed Creative & Pro Tools
+    val ambiance: Float = 0f,       // -100 to 100
+    val structure: Float = 0f,      // -100 to 100
+    val glamourGlow: Float = 0f,    // 0 to 100
+    val drama: Float = 0f,          // 0 to 100
+    val vintage: Float = 0f,        // 0 to 100
+    val grain: Float = 0f,          // 0 to 100
+    val retrolux: Float = 0f,       // 0 to 100
+    val grunge: Float = 0f,         // 0 to 100
+    val blackAndWhite: Float = 0f,  // 0 to 100
+    val noir: Float = 0f,           // 0 to 100
+    val portraitSmooth: Float = 0f, // 0 to 100
+    val portraitSpotlight: Float = 0f, // 0 to 100
+    val lensBlur: Float = 0f,       // 0 to 100
+    val cyberpunkNeon: Float = 0f,  // 0 to 100 (Burhanuddin Crazy Feature)
+
+    // Photoshop PC Pro Tools
+    val levelsBlack: Float = 0f,       // 0 to 100
+    val levelsWhite: Float = 0f,       // 0 to 100
+    val levelsGamma: Float = 0f,       // -100 to 100
+    val colorBalanceCyanRed: Float = 0f,      // -100 (Cyan) to +100 (Red)
+    val colorBalanceMagentaGreen: Float = 0f, // -100 (Magenta) to +100 (Green)
+    val colorBalanceYellowBlue: Float = 0f,   // -100 (Yellow) to +100 (Blue)
+
     // Photographer Watermark
-    val watermark: WatermarkConfig = WatermarkConfig(),
+    val watermark: WatermarkConfig = WatermarkConfig(text = "© Burhanuddin Photography"),
 
     // Custom 3D LUT
     val customLut: Lut3D? = null,
     val lutIntensity: Float = 100f,
+
+    // Snapseed Selective Control Points (U-Point)
+    val selectivePoints: List<SelectivePoint> = emptyList(),
+    val activeSelectivePointIndex: Int = -1,
+
+    // Double Exposure
+    val doubleExposure: DoubleExposureState = DoubleExposureState(),
+
+    // Healing / Spot Removal
+    val healingStrokes: List<HealingStroke> = emptyList(),
 
     // Active Preset
     val appliedPresetId: String? = null
@@ -198,6 +281,14 @@ data class EditState(
                 vignette != 0f || lensDistortion != 0f || defringeAmount != 0f ||
                 rotationDegrees != 0f || fineRotation != 0f ||
                 flipHorizontal || flipVertical || cropRect != null ||
+                ambiance != 0f || structure != 0f || glamourGlow != 0f || drama != 0f ||
+                vintage != 0f || grain != 0f || retrolux != 0f || grunge != 0f ||
+                blackAndWhite != 0f || noir != 0f || portraitSmooth != 0f ||
+                portraitSpotlight != 0f || lensBlur != 0f || cyberpunkNeon != 0f ||
+                levelsBlack != 0f || levelsWhite != 0f || levelsGamma != 0f ||
+                colorBalanceCyanRed != 0f || colorBalanceMagentaGreen != 0f || colorBalanceYellowBlue != 0f ||
+                selectivePoints.any { !it.isDefault } || !doubleExposure.isDefault ||
+                healingStrokes.isNotEmpty() ||
                 !toneCurves.isDefault || activeMask?.isModified == true ||
                 !colorGrading.isDefault || watermark.enabled ||
                 customLut != null ||
@@ -238,16 +329,26 @@ data class Lut3D(
     }
 }
 
+data class EditStackItem(
+    val id: String = UUID.randomUUID().toString(),
+    val toolName: String,
+    val summary: String,
+    val stateSnapshot: EditState
+)
+
 class HistoryManager(initialState: EditState = EditState()) {
     private val undoStack = mutableListOf<EditState>()
     private val redoStack = mutableListOf<EditState>()
+    private val editStack = mutableListOf<EditStackItem>()
+
     var currentState: EditState = initialState
         private set
 
     val canUndo: Boolean get() = undoStack.isNotEmpty()
     val canRedo: Boolean get() = redoStack.isNotEmpty()
+    val currentEditStack: List<EditStackItem> get() = editStack.toList()
 
-    fun pushState(newState: EditState) {
+    fun pushState(newState: EditState, toolName: String = "Adjustment", summary: String = "") {
         if (newState == currentState) return
         undoStack.add(currentState)
         if (undoStack.size > 50) {
@@ -255,12 +356,16 @@ class HistoryManager(initialState: EditState = EditState()) {
         }
         redoStack.clear()
         currentState = newState
+        editStack.add(EditStackItem(toolName = toolName, summary = summary, stateSnapshot = newState))
     }
 
     fun undo(): EditState? {
         if (!canUndo) return null
         redoStack.add(currentState)
         currentState = undoStack.removeAt(undoStack.lastIndex)
+        if (editStack.isNotEmpty()) {
+            editStack.removeAt(editStack.lastIndex)
+        }
         return currentState
     }
 
@@ -271,9 +376,23 @@ class HistoryManager(initialState: EditState = EditState()) {
         return currentState
     }
 
+    fun removeStackLayer(index: Int): EditState? {
+        if (index in editStack.indices) {
+            editStack.removeAt(index)
+            currentState = if (editStack.isNotEmpty()) {
+                editStack.last().stateSnapshot
+            } else {
+                EditState()
+            }
+            return currentState
+        }
+        return null
+    }
+
     fun reset(): EditState {
         undoStack.add(currentState)
         redoStack.clear()
+        editStack.clear()
         currentState = EditState()
         return currentState
     }

@@ -1,13 +1,14 @@
 package com.lumify.editor.ui.screens
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,12 +20,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.unit.Dp
-import com.lumify.editor.ui.components.AmbientLiquidBackdrop
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -34,30 +32,46 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.BrandingWatermark
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.InvertColors
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,55 +86,54 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lumify.editor.R
 import com.lumify.editor.core.CropRect
-import com.lumify.editor.core.HslAdjustment
-import com.lumify.editor.core.HslChannel
-import com.lumify.editor.core.MaskType
-import com.lumify.editor.core.SelectiveMask
-import com.lumify.editor.presets.PresetRepository
-import com.lumify.editor.ui.components.AdjustSlider
-import com.lumify.editor.ui.components.CropOverlay
-import com.lumify.editor.ui.components.HistogramView
-import android.os.Build
-import androidx.compose.ui.graphics.asComposeRenderEffect
+import com.lumify.editor.core.EditState
 import com.lumify.editor.gpu.GpuRenderEngine
+import com.lumify.editor.presets.FilterPreset
+import com.lumify.editor.presets.PresetRepository
+import com.lumify.editor.ui.components.AmbientLiquidBackdrop
 import com.lumify.editor.ui.components.ColorWheelsView
+import com.lumify.editor.ui.components.CropOverlay
+import com.lumify.editor.ui.components.DoubleExposureOverlay
+import com.lumify.editor.ui.components.HealingOverlay
+import com.lumify.editor.ui.components.HistogramView
 import com.lumify.editor.ui.components.LiquidGlassButton
 import com.lumify.editor.ui.components.LiquidGlassSurface
 import com.lumify.editor.ui.components.MaskOverlay
 import com.lumify.editor.ui.components.PixelLoupe
+import com.lumify.editor.ui.components.QrPresetImportDialog
+import com.lumify.editor.ui.components.QrPresetShareDialog
+import com.lumify.editor.ui.components.SelectiveUPointOverlay
+import com.lumify.editor.ui.components.SnapseedBottomToolBar
+import com.lumify.editor.ui.components.SnapseedExportSheet
+import com.lumify.editor.ui.components.SnapseedFloatingParamSelector
+import com.lumify.editor.ui.components.SnapseedToolsSheet
+import com.lumify.editor.ui.components.SnapseedTopHud
+import com.lumify.editor.ui.components.SnapseedViewEditsDialog
+import com.lumify.editor.ui.components.SplitComparisonView
 import com.lumify.editor.ui.components.ToneCurveView
 import com.lumify.editor.ui.components.WatermarkDialog
 import com.lumify.editor.ui.theme.AccentCyan
+import com.lumify.editor.ui.theme.AccentEmerald
+import com.lumify.editor.ui.theme.AccentPurple
 import com.lumify.editor.ui.theme.DarkBackground
 import com.lumify.editor.ui.theme.DarkSurface
 import com.lumify.editor.ui.theme.DarkSurfaceElevated
-import com.lumify.editor.ui.theme.HslBlue
-import com.lumify.editor.ui.theme.HslCyan
-import com.lumify.editor.ui.theme.HslGreen
-import com.lumify.editor.ui.theme.HslMagenta
-import com.lumify.editor.ui.theme.HslOrange
-import com.lumify.editor.ui.theme.HslPurple
-import com.lumify.editor.ui.theme.HslRed
-import com.lumify.editor.ui.theme.HslYellow
 import com.lumify.editor.ui.theme.TextMuted
 import com.lumify.editor.ui.theme.TextPrimary
 import com.lumify.editor.ui.theme.TextSecondary
+import kotlin.math.abs
 
 @Composable
 fun EditorScreen(
@@ -138,6 +151,10 @@ fun EditorScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.loadOfflinePresets(context)
+    }
+
     // Zoom & Pan state
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -145,1080 +162,1085 @@ fun EditorScreen(
     var touchNormPos by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
     var touchScreenPos by remember { mutableStateOf(Offset(200f, 200f)) }
 
+    // Gesture tracking for in-tool mode
+    var isDraggingGesture by remember { mutableStateOf(false) }
+    var totalDragY by remember { mutableFloatStateOf(0f) }
+    var showFloatingParamSelector by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showParamsBottomSheet by remember { mutableStateOf(false) }
+
     AmbientLiquidBackdrop(enableDrift = false) {
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize()
         ) {
             val screenHeight = maxHeight
-            val controlPanelHeight = when {
-                screenHeight < 620.dp -> 180.dp
-                screenHeight < 780.dp -> 230.dp
-                else -> 255.dp
-            }
-            val curveCanvasSize = when {
-                screenHeight < 620.dp -> 150.dp
-                screenHeight < 780.dp -> 175.dp
-                else -> 195.dp
-            }
 
-            Box(
-                modifier = Modifier.fillMaxSize()
-            ) {
-        // 1. Image Canvas & Interactive Viewport
-        val displayBitmap = if (uiState.isComparing) uiState.originalBitmap else uiState.previewBitmap
-        val original = uiState.originalBitmap
+            Box(modifier = Modifier.fillMaxSize()) {
 
-        if (displayBitmap != null && original != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clipToBounds()
-                    .onSizeChanged { canvasSize = it }
-                    .then(
-                        if (uiState.isEyedropperActive) {
-                            Modifier.pointerInput(Unit) {
-                                detectTapGestures { tapPos ->
-                                    val nx = (tapPos.x / size.width).coerceIn(0f, 1f)
-                                    val ny = (tapPos.y / size.height).coerceIn(0f, 1f)
-                                    viewModel.sampleEyedropper(nx, ny)
-                                }
-                            }
-                        } else if (uiState.isLoupeActive) {
-                            Modifier.pointerInput(Unit) {
-                                detectDragGestures(
-                                    onDragStart = { startPos ->
-                                        touchScreenPos = startPos
-                                        touchNormPos = Offset(
-                                            (startPos.x / size.width).coerceIn(0f, 1f),
-                                            (startPos.y / size.height).coerceIn(0f, 1f)
+                // 1. Image Canvas & Interactive Viewport
+                val displayBitmap = when {
+                    uiState.isComparing || uiState.isComparingTool -> uiState.originalBitmap
+                    else -> uiState.previewBitmap
+                }
+                val original = uiState.originalBitmap
+
+                if (displayBitmap != null && original != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clipToBounds()
+                            .onSizeChanged { canvasSize = it }
+                            .then(
+                                // If inside a tool with parameters, handle Snapseed drag gestures!
+                                if (uiState.activeTool != null && uiState.activeTool?.parameters?.isNotEmpty() == true) {
+                                    Modifier.pointerInput(uiState.activeTool) {
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                isDraggingGesture = true
+                                                totalDragY = 0f
+                                                showFloatingParamSelector = false
+                                            },
+                                            onDragEnd = {
+                                                isDraggingGesture = false
+                                                showFloatingParamSelector = false
+                                                viewModel.onSliderDragFinished()
+                                            },
+                                            onDragCancel = {
+                                                isDraggingGesture = false
+                                                showFloatingParamSelector = false
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                val deltaX = dragAmount.x
+                                                val deltaY = dragAmount.y
+
+                                                totalDragY += deltaY
+
+                                                // Vertical threshold: switches parameters up or down!
+                                                if (abs(totalDragY) > 55f) {
+                                                    showFloatingParamSelector = true
+                                                    if (totalDragY < -55f) {
+                                                        viewModel.prevParam()
+                                                        totalDragY = 0f
+                                                    } else if (totalDragY > 55f) {
+                                                        viewModel.nextParam()
+                                                        totalDragY = 0f
+                                                    }
+                                                }
+
+                                                // Horizontal drag: adjusts parameter value smoothly!
+                                                if (abs(deltaX) > 1.2f) {
+                                                    viewModel.adjustActiveParameter(deltaX * 0.45f)
+                                                }
+                                            }
                                         )
-                                        viewModel.updateLoupePosition(touchScreenPos, touchNormPos)
-                                    },
-                                    onDrag = { change, _ ->
-                                        touchScreenPos = change.position
-                                        touchNormPos = Offset(
-                                            (change.position.x / size.width).coerceIn(0f, 1f),
-                                            (change.position.y / size.height).coerceIn(0f, 1f)
-                                        )
-                                        viewModel.updateLoupePosition(touchScreenPos, touchNormPos)
                                     }
+                                } else if (uiState.isEyedropperActive) {
+                                    Modifier.pointerInput(Unit) {
+                                        detectTapGestures { tapPos ->
+                                            val nx = (tapPos.x / size.width).coerceIn(0f, 1f)
+                                            val ny = (tapPos.y / size.height).coerceIn(0f, 1f)
+                                            viewModel.sampleEyedropper(nx, ny)
+                                        }
+                                    }
+                                } else if (uiState.isLoupeActive) {
+                                    Modifier.pointerInput(Unit) {
+                                        detectDragGestures(
+                                            onDragStart = { startPos ->
+                                                touchScreenPos = startPos
+                                                touchNormPos = Offset(
+                                                    (startPos.x / size.width).coerceIn(0f, 1f),
+                                                    (startPos.y / size.height).coerceIn(0f, 1f)
+                                                )
+                                                viewModel.updateLoupePosition(touchScreenPos, touchNormPos)
+                                            },
+                                            onDrag = { change, _ ->
+                                                touchScreenPos = change.position
+                                                touchNormPos = Offset(
+                                                    (change.position.x / size.width).coerceIn(0f, 1f),
+                                                    (change.position.y / size.height).coerceIn(0f, 1f)
+                                                )
+                                                viewModel.updateLoupePosition(touchScreenPos, touchNormPos)
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    // Pinch-to-zoom and pan + Press-and-hold canvas to compare before/after!
+                                    Modifier.pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                viewModel.toggleComparison(true)
+                                                tryAwaitRelease()
+                                                viewModel.toggleComparison(false)
+                                            }
+                                        )
+                                    }.pointerInput(Unit) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            scale = (scale * zoom).coerceIn(1f, 5f)
+                                            offset = if (scale > 1f) {
+                                                Offset(offset.x + pan.x, offset.y + pan.y)
+                                            } else {
+                                                Offset.Zero
+                                            }
+                                        }
+                                    }
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = displayBitmap.asImageBitmap(),
+                            contentDescription = "Active Image Canvas",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    translationX = offset.x
+                                    translationY = offset.y
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && GpuRenderEngine.isGpuAccelerationSupported) {
+                                        renderEffect = GpuRenderEngine.createGpuRenderEffect(
+                                            uiState.editState,
+                                            canvasSize.width.toFloat(),
+                                            canvasSize.height.toFloat()
+                                        )?.asComposeRenderEffect()
+                                    }
+                                }
+                        )
+
+                        // Split Comparison View (Crazy Feature)
+                        if (uiState.showSplitCompare) {
+                            SplitComparisonView(
+                                originalBitmap = original,
+                                previewBitmap = displayBitmap,
+                                splitPosition = uiState.splitComparePosition,
+                                onPositionChange = { viewModel.setSplitPosition(it) },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Crop Tool Overlay
+                        if (uiState.activeTool == SnapseedTool.CROP) {
+                            CropOverlay(
+                                cropRect = uiState.editState.cropRect ?: CropRect(),
+                                selectedRatio = uiState.editState.selectedAspectRatio,
+                                onCropChange = { newCrop ->
+                                    viewModel.updateEditState { it.copy(cropRect = newCrop) }
+                                },
+                                onRatioSelect = { newRatio ->
+                                    viewModel.setAspectRatio(newRatio)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Selective Masking Overlay
+                        if (uiState.activeTool == SnapseedTool.SELECTIVE_MASKS) {
+                            MaskOverlay(
+                                mask = uiState.editState.activeMask,
+                                onMaskChanged = { updatedMask ->
+                                    viewModel.updateActiveMask(updatedMask)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Snapseed Selective (U-Point) Control Points Overlay
+                        if (uiState.activeTool == SnapseedTool.SELECTIVE) {
+                            SelectiveUPointOverlay(
+                                points = uiState.editState.selectivePoints,
+                                selectedIndex = uiState.editState.activeSelectivePointIndex,
+                                containerSize = canvasSize,
+                                onAddPoint = { nx, ny -> viewModel.addSelectivePoint(nx, ny) },
+                                onSelectPoint = { viewModel.selectSelectivePoint(it) },
+                                onUpdatePoint = { idx, tf -> viewModel.updateSelectivePoint(idx, tf) },
+                                onDeletePoint = { viewModel.deleteSelectivePoint(it) },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Healing / Spot Removal Overlay
+                        if (uiState.activeTool == SnapseedTool.HEALING) {
+                            HealingOverlay(
+                                strokes = uiState.editState.healingStrokes,
+                                onAddStroke = { viewModel.addHealingStroke(it) },
+                                onUndoStroke = { viewModel.undoHealingStroke() },
+                                onClearStrokes = { viewModel.clearHealingStrokes() },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Double Exposure Overlay
+                        if (uiState.activeTool == SnapseedTool.DOUBLE_EXPOSURE) {
+                            DoubleExposureOverlay(
+                                state = uiState.editState.doubleExposure,
+                                onStateChange = { viewModel.setDoubleExposureState(it) },
+                                onPickImage = { viewModel.setDoubleExposureSecondaryImage(context, it) },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // 8x Pixel Loupe
+                        if (uiState.isLoupeActive) {
+                            PixelLoupe(
+                                bitmap = displayBitmap,
+                                touchPositionScreen = uiState.loupeTouchOffset,
+                                touchNorm = uiState.loupeTouchNorm,
+                                containerSize = canvasSize
+                            )
+                        }
+
+                        // Floating In-Tool Parameter Selector (when swiping vertically)
+                        if (uiState.activeTool != null && uiState.activeTool?.parameters?.isNotEmpty() == true) {
+                            SnapseedFloatingParamSelector(
+                                parameters = uiState.activeTool!!.parameters,
+                                selectedIndex = uiState.activeParamIndex,
+                                visible = showFloatingParamSelector,
+                                onSelectParam = {
+                                    viewModel.setParamIndex(it)
+                                    showFloatingParamSelector = false
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 40.dp)
+                            )
+                        }
+
+                        // "BEFORE / ORIGINAL" Floating Badge when holding to compare
+                        if (uiState.isComparing || uiState.isComparingTool) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .statusBarsPadding()
+                                    .padding(top = 16.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(DarkBackground.copy(alpha = 0.85f))
+                                    .border(1.dp, AccentCyan.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "ORIGINAL",
+                                    color = AccentCyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 2.sp
                                 )
                             }
-                        } else {
-                            Modifier.pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(1f, 5f)
-                                    offset = if (scale > 1f) {
-                                        Offset(offset.x + pan.x, offset.y + pan.y)
-                                    } else {
-                                        Offset.Zero
+                        }
+                    }
+                }
+
+                // 2. Processing Spinner
+                if (uiState.isProcessing) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(DarkBackground.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = AccentCyan,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                // 3. Top Bars
+                if (uiState.activeTool != null) {
+                    // IN-TOOL TOP HUD (Snapseed Style)
+                    val activeParam = uiState.activeTool!!.parameters.getOrNull(uiState.activeParamIndex)
+                    SnapseedTopHud(
+                        activeParam = activeParam,
+                        currentValue = uiState.currentHudValue,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
+                } else {
+                    // MAIN EDITOR TOP BAR (Snapseed Style with Liquid Glass)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        LiquidGlassSurface(
+                            shape = RoundedCornerShape(22.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // "OPEN" Button on the left
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(AccentCyan.copy(alpha = 0.15f))
+                                        .clickable { onNavigateBack() }
+                                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderOpen,
+                                        contentDescription = "Open Photo",
+                                        tint = AccentCyan,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "OPEN",
+                                        color = AccentCyan,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+
+                                // Right action items: Stacks (View Edits), Info, Split Compare, More Menu
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Undo / Redo
+                                    IconButton(
+                                        onClick = { viewModel.undo() },
+                                        enabled = uiState.canUndo,
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                                            contentDescription = "Undo",
+                                            tint = if (uiState.canUndo) TextPrimary else TextMuted.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.redo() },
+                                        enabled = uiState.canRedo,
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                                            contentDescription = "Redo",
+                                            tint = if (uiState.canRedo) TextPrimary else TextMuted.copy(alpha = 0.4f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    // Stacks / View Edits icon (Snapseed hallmark)
+                                    IconButton(
+                                        onClick = { viewModel.setShowViewEditsDialog(true) },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Layers,
+                                            contentDescription = "View Edits",
+                                            tint = if (uiState.editStack.isNotEmpty()) AccentCyan else TextPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    // Info EXIF & Histogram icon
+                                    IconButton(
+                                        onClick = { viewModel.setShowExifDialog(true) },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = "Image Info",
+                                            tint = TextPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    // Overflow Menu
+                                    Box {
+                                        IconButton(
+                                            onClick = { showOverflowMenu = true },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Menu",
+                                                tint = TextPrimary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = showOverflowMenu,
+                                            onDismissRequest = { showOverflowMenu = false },
+                                            modifier = Modifier.background(DarkSurfaceElevated)
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Split View Comparison", color = TextPrimary) },
+                                                leadingIcon = { Icon(Icons.Default.Compare, null, tint = AccentCyan) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.toggleSplitComparison()
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("8x Loupe Inspector", color = TextPrimary) },
+                                                leadingIcon = { Icon(Icons.Default.ZoomIn, null, tint = AccentCyan) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.toggleLoupe()
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Save Current Look Offline", color = AccentCyan) },
+                                                leadingIcon = { Icon(Icons.Default.BookmarkAdd, null, tint = AccentCyan) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.setShowCreatePresetDialog(true)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Share Look as QR Code", color = AccentCyan) },
+                                                leadingIcon = { Icon(Icons.Default.QrCode2, null, tint = AccentCyan) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.openQrShare("Custom Look")
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Import Look (QR / .lumify)", color = TextPrimary) },
+                                                leadingIcon = { Icon(Icons.Default.FileDownload, null, tint = AccentCyan) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.openQrImport()
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Copy Edit Recipe", color = TextPrimary) },
+                                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = TextPrimary) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.copyRecipe()
+                                                }
+                                            )
+                                            if (uiState.copiedRecipe != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Paste Edit Recipe", color = AccentCyan) },
+                                                    leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = AccentCyan) },
+                                                    onClick = {
+                                                        showOverflowMenu = false
+                                                        viewModel.pasteRecipe()
+                                                    }
+                                                )
+                                            }
+                                            DropdownMenuItem(
+                                                text = { Text("Revert All Edits", color = TextSecondary) },
+                                                leadingIcon = { Icon(Icons.Default.Refresh, null, tint = TextSecondary) },
+                                                onClick = {
+                                                    showOverflowMenu = false
+                                                    viewModel.resetEdits()
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    bitmap = displayBitmap.asImageBitmap(),
-                    contentDescription = "Active Image Canvas",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = offset.x
-                            translationY = offset.y
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && GpuRenderEngine.isGpuAccelerationSupported) {
-                                renderEffect = GpuRenderEngine.createGpuRenderEffect(
-                                    uiState.editState,
-                                    canvasSize.width.toFloat(),
-                                    canvasSize.height.toFloat()
-                                )?.asComposeRenderEffect()
+                    }
+                }
+
+                // 4. In-Tool Specific Overlays (Curves, Color Wheels, etc.)
+                if (uiState.activeTool == SnapseedTool.CURVES) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(24.dp)
+                    ) {
+                        ToneCurveView(
+                            curves = uiState.editState.toneCurves,
+                            onCurvesChanged = { newCurves ->
+                                viewModel.updateEditState { it.copy(toneCurves = newCurves) }
+                            },
+                            canvasSize = 220.dp
+                        )
+                    }
+                } else if (uiState.activeTool == SnapseedTool.COLOR_WHEELS) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 80.dp)
+                    ) {
+                        ColorWheelsView(
+                            state = uiState.editState.colorGrading,
+                            onStateChange = { newGrading ->
+                                viewModel.updateEditState { it.copy(colorGrading = newGrading) }
+                            }
+                        )
+                    }
+                }
+
+                // 5. Bottom Navigation & Action Bars
+                if (uiState.activeTool != null) {
+                    // IN-TOOL ACTION BAR: ✕ (Cancel) | ☰ (Params) | ◫ (Compare) | ✓ (Apply)
+                    SnapseedBottomToolBar(
+                        onCancel = { viewModel.cancelSnapseedTool() },
+                        onOpenParamList = { showParamsBottomSheet = true },
+                        onCompareToggle = { viewModel.toggleToolComparison(it) },
+                        onApply = { viewModel.applySnapseedTool() },
+                        hasParameters = uiState.activeTool!!.parameters.isNotEmpty(),
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                } else {
+                    // MAIN SNAPSEED 3-TAB BOTTOM BAR: [LOOKS] [TOOLS] [EXPORT]
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                    ) {
+                        // If LOOKS tab is selected, show horizontal presets carousel!
+                        if (uiState.activeSnapseedTab == SnapseedTab.LOOKS) {
+                            LazyRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 1. "+ Save Look" Offline Preset Creator Card
+                                item {
+                                    Column(
+                                        modifier = Modifier
+                                            .width(76.dp)
+                                            .clickable { viewModel.setShowCreatePresetDialog(true) },
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(64.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(AccentCyan.copy(alpha = 0.15f))
+                                                .border(1.dp, AccentCyan.copy(alpha = 0.45f), RoundedCornerShape(14.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "Save Custom Preset",
+                                                tint = AccentCyan,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = "+ Save Look",
+                                            color = AccentCyan,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                // 2. "Import QR" Offline Recipe Card
+                                item {
+                                    Column(
+                                        modifier = Modifier
+                                            .width(76.dp)
+                                            .clickable { viewModel.openQrImport() },
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(64.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(Color.White.copy(alpha = 0.08f))
+                                                .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(14.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.QrCode2,
+                                                contentDescription = "Import Preset QR",
+                                                tint = TextPrimary,
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = "Import QR",
+                                            color = TextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                // 2. Custom Offline Presets Saved by User
+                                items(uiState.customPresets) { customPreset ->
+                                    val isSelected = (uiState.editState.appliedPresetId == customPreset.id)
+                                    SnapseedLookCard(
+                                        preset = customPreset,
+                                        isSelected = isSelected,
+                                        isCustom = true,
+                                        onShareQr = {
+                                            viewModel.openQrShare(customPreset.name)
+                                        },
+                                        onDelete = {
+                                            viewModel.deleteOfflinePreset(context, customPreset.id)
+                                        },
+                                        onClick = {
+                                            viewModel.applyPreset(customPreset)
+                                        }
+                                    )
+                                }
+
+                                // 3. Built-in Snapseed & Crazy Presets
+                                items(PresetRepository.allPresets) { preset ->
+                                    val isSelected = (uiState.editState.appliedPresetId == preset.id)
+                                    SnapseedLookCard(
+                                        preset = preset,
+                                        isSelected = isSelected,
+                                        onShareQr = {
+                                            viewModel.openQrShare(preset.name)
+                                        },
+                                        onClick = {
+                                            viewModel.applyPreset(preset)
+                                        }
+                                    )
+                                }
                             }
                         }
-                )
 
-                // Crop Overlay when in Crop Tab
-                if (uiState.activeTab == EditorTab.CROP) {
-                    CropOverlay(
-                        cropRect = uiState.editState.cropRect ?: CropRect(),
-                        selectedRatio = uiState.editState.selectedAspectRatio,
-                        onCropChange = { newCrop ->
-                            viewModel.updateEditState { it.copy(cropRect = newCrop) }
+                        // Bottom 3 Primary Tabs Floating Liquid Glass Pill
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            LiquidGlassSurface(
+                                shape = RoundedCornerShape(26.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    SnapseedTabItem(
+                                        label = "LOOKS",
+                                        isSelected = (uiState.activeSnapseedTab == SnapseedTab.LOOKS),
+                                        onClick = { viewModel.selectSnapseedTab(SnapseedTab.LOOKS) }
+                                    )
+
+                                    SnapseedTabItem(
+                                        label = "TOOLS",
+                                        isSelected = (uiState.activeSnapseedTab == SnapseedTab.TOOLS),
+                                        onClick = { viewModel.selectSnapseedTab(SnapseedTab.TOOLS) }
+                                    )
+
+                                    SnapseedTabItem(
+                                        label = "EXPORT",
+                                        isSelected = (uiState.activeSnapseedTab == SnapseedTab.EXPORT),
+                                        onClick = { viewModel.selectSnapseedTab(SnapseedTab.EXPORT) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6. Tools Sheet Modal
+                if (uiState.showToolsSheet) {
+                    SnapseedToolsSheet(
+                        onDismiss = { viewModel.setShowToolsSheet(false) },
+                        onSelectTool = { tool ->
+                            viewModel.openSnapseedTool(tool)
+                        }
+                    )
+                }
+
+                // 7. Export Sheet Modal
+                if (uiState.showExportSheet) {
+                    SnapseedExportSheet(
+                        onDismiss = { viewModel.setShowExportSheet(false) },
+                        onShare = {
+                            val bmp = uiState.previewBitmap ?: return@SnapseedExportSheet
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                type = "image/jpeg"
+                                putExtra(Intent.EXTRA_TEXT, "Edited with Snapseed by Burhanuddin")
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Share with"))
                         },
-                        onRatioSelect = { ratio -> viewModel.setAspectRatio(ratio) },
-                        onRotate90 = { viewModel.rotate90() },
-                        onFlipHorizontal = { viewModel.flipHorizontal() }
-                    )
-                }
-
-                // Selective Mask Overlay when in Masks Tab
-                if (uiState.activeTab == EditorTab.MASKS && uiState.editState.activeMask != null) {
-                    MaskOverlay(
-                        mask = uiState.editState.activeMask!!,
-                        onMaskChange = { updated ->
-                            viewModel.updateEditState { it.copy(activeMask = updated) }
-                        }
-                    )
-                }
-
-                // Eyedropper Live Sampler Aim Reticle
-                if (uiState.isEyedropperActive) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val center = Offset(size.width * touchNormPos.x, size.height * touchNormPos.y)
-                        drawCircle(Color.Black, radius = 24.dp.toPx(), center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
-                        drawCircle(AccentCyan, radius = 22.dp.toPx(), center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
-                        drawCircle(AccentCyan, radius = 3.dp.toPx(), center = center)
-                    }
-                }
-
-                // 1:1 Pixel Loupe Floating Magnifier
-                if (uiState.isLoupeActive) {
-                    PixelLoupe(
-                        bitmap = original,
-                        touchPointNorm = touchNormPos,
-                        screenTouchOffset = touchScreenPos
-                    )
-                }
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AccentCyan)
-            }
-        }
-
-        // Eyedropper / Loupe Guidance Banner
-        if (uiState.isEyedropperActive || uiState.isLoupeActive) {
-            LiquidGlassSurface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 64.dp)
-                    .padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                backgroundColor = DarkSurface.copy(alpha = 0.9f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (uiState.isEyedropperActive)
-                            "Tap any neutral gray or white point in photo"
-                        else
-                            "Drag finger to check 1:1 tack-sharp focus & noise",
-                        color = AccentCyan,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Cancel",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        modifier = Modifier.clickable {
-                            if (uiState.isEyedropperActive) viewModel.toggleEyedropper(false)
-                            if (uiState.isLoupeActive) viewModel.toggleLoupe(false)
-                        }
-                    )
-                }
-            }
-        }
-
-        // 2. Top Liquid Glass Action Bar
-        LiquidGlassSurface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(20.dp),
-            backgroundColor = DarkSurface.copy(alpha = 0.85f)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
-                    )
-                }
-
-                // Studio Precision Controls (Loupe, Eyedropper, Recipe, History)
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 1:1 Deep Zoom Pixel Loupe
-                    IconButton(onClick = { viewModel.toggleLoupe() }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_loupe),
-                            contentDescription = "1:1 Pixel Loupe",
-                            tint = if (uiState.isLoupeActive) AccentCyan else TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // White Balance Eyedropper (Pipette)
-                    IconButton(onClick = { viewModel.toggleEyedropper() }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_eyedropper),
-                            contentDescription = "Eyedropper",
-                            tint = if (uiState.isEyedropperActive) AccentCyan else TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Copy Edit Recipe
-                    IconButton(onClick = { viewModel.copySettings() }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_copy),
-                            contentDescription = "Copy Settings",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    // Paste Edit Recipe
-                    IconButton(
-                        onClick = { viewModel.pasteSettings() },
-                        enabled = uiState.copiedRecipe != null
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_paste),
-                            contentDescription = "Paste Settings",
-                            tint = if (uiState.copiedRecipe != null) AccentCyan else TextMuted,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    // Watermark Customization
-                    IconButton(onClick = { viewModel.setShowWatermarkDialog(true) }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_watermark),
-                            contentDescription = "Watermark",
-                            tint = if (uiState.editState.watermark.enabled) AccentCyan else TextSecondary,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    // Add to Batch Export Queue
-                    IconButton(onClick = { viewModel.addToBatchQueue() }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_batch_queue),
-                            contentDescription = "Batch Queue",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    // Undo
-                    IconButton(
-                        onClick = { viewModel.undo() },
-                        enabled = uiState.canUndo
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "Undo",
-                            tint = if (uiState.canUndo) TextPrimary else TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Redo
-                    IconButton(
-                        onClick = { viewModel.redo() },
-                        enabled = uiState.canRedo
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Redo,
-                            contentDescription = "Redo",
-                            tint = if (uiState.canRedo) TextPrimary else TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Hold/Click to Compare
-                    IconButton(
-                        onClick = { viewModel.toggleComparison(!uiState.isComparing) }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Visibility,
-                            contentDescription = "Compare",
-                            tint = if (uiState.isComparing) AccentCyan else TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Reset
-                    IconButton(
-                        onClick = { viewModel.resetEdits() },
-                        enabled = uiState.editState.isModified
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Reset",
-                            tint = if (uiState.editState.isModified) AccentCyan else TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                // Export CTA Button
-                LiquidGlassButton(
-                    onClick = { viewModel.setShowExportDialog(true) },
-                    modifier = Modifier.height(34.dp),
-                    backgroundColor = AccentCyan.copy(alpha = 0.2f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FileDownload,
-                            contentDescription = "Export",
-                            tint = AccentCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Export",
-                            color = AccentCyan,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        // Live Floating Histogram & Metadata Badge
-        AnimatedVisibility(
-            visible = uiState.histogramData != null && uiState.activeTab != EditorTab.CROP,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 62.dp, end = 12.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                HistogramView(data = uiState.histogramData)
-                uiState.metadata?.let { meta ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${meta.format} • ${meta.width}x${meta.height}${if (meta.iso != null) " • " + meta.iso else ""}",
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        // 3. Bottom Studio Control Panel (Liquid Glass Sheet)
-        LiquidGlassSurface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-            shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-            backgroundColor = DarkSurface.copy(alpha = 0.92f)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                // Adjustment Slider Area (Scrollable per active tab)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(controlPanelHeight)
-                ) {
-                    when (uiState.activeTab) {
-                        EditorTab.LIGHT -> LightControls(viewModel, uiState)
-                        EditorTab.COLOR -> ColorControls(viewModel, uiState)
-                        EditorTab.CURVES -> CurvesControls(viewModel, uiState, curveCanvasSize)
-                        EditorTab.GRADING -> ColorWheelsView(
-                            colorGrading = uiState.editState.colorGrading,
-                            onColorGradingChange = { updated ->
-                                viewModel.updateEditState { it.copy(colorGrading = updated) }
+                        onSaveCopy = {
+                            viewModel.exportImage(context, ExportFormat.JPEG, 95, true)
+                        },
+                        onOpenExportDialog = {
+                            viewModel.setShowExportDialog(true)
+                        },
+                        onExportWithSignature = {
+                            viewModel.updateEditState {
+                                it.copy(watermark = it.watermark.copy(enabled = true, text = "© Burhanuddin Photography"))
                             }
-                        )
-                        EditorTab.HSL -> HslControls(viewModel, uiState)
-                        EditorTab.MASKS -> MasksControls(viewModel, uiState)
-                        EditorTab.OPTICS -> OpticsControls(viewModel, uiState)
-                        EditorTab.DETAIL -> DetailControls(viewModel, uiState)
-                        EditorTab.CROP -> CropControls(viewModel, uiState)
-                        EditorTab.PRESETS -> PresetsControls(viewModel, uiState)
-                    }
+                            viewModel.exportImage(context, ExportFormat.JPEG, 98, true)
+                        }
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                // 8. View Edits Dialog (Stacks)
+                if (uiState.showViewEditsDialog) {
+                    SnapseedViewEditsDialog(
+                        editStack = uiState.editStack,
+                        onDismiss = { viewModel.setShowViewEditsDialog(false) },
+                        onDeleteLayer = { viewModel.removeStackLayer(it) },
+                        onRevertAll = { viewModel.resetEdits() }
+                    )
+                }
 
-                // Bottom Pro Tab Navigation Ribbon (Scrollable for all 10 studio tools)
-                LazyRow(
+                // 9. Info & EXIF Dialog
+                if (uiState.showExifDialog) {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.setShowExifDialog(false) },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Info, null, tint = AccentCyan)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Photo Information & EXIF", fontWeight = FontWeight.Bold, color = TextPrimary)
+                            }
+                        },
+                        text = {
+                            Column {
+                                uiState.metadata?.let { meta ->
+                                    Text("Camera: ${meta.cameraMake} ${meta.cameraModel}", color = TextPrimary, fontSize = 13.sp)
+                                    Text("Lens: ${meta.lensModel}", color = TextSecondary, fontSize = 12.sp)
+                                    Text("Focal Length: ${meta.focalLength} • ${meta.aperture}", color = TextSecondary, fontSize = 12.sp)
+                                    Text("ISO: ${meta.iso} • Shutter: ${meta.shutterSpeed}", color = TextSecondary, fontSize = 12.sp)
+                                    Text("Resolution: ${meta.width} × ${meta.height} (${meta.megapixels})", color = TextSecondary, fontSize = 12.sp)
+                                    Text("Format: ${meta.format}", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                } ?: Text("No EXIF data found in image.", color = TextMuted)
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                uiState.histogramData?.let { hist ->
+                                    Text("RGB & Luminance Waveform", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HistogramView(hist, modifier = Modifier.fillMaxWidth().height(60.dp))
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.setShowExifDialog(false) }) {
+                                Text("Close", color = AccentCyan, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        containerColor = DarkSurfaceElevated
+                    )
+                }
+
+                // In-Tool Parameter Selection Dialog
+                if (showParamsBottomSheet && uiState.activeTool?.parameters?.isNotEmpty() == true) {
+                    AlertDialog(
+                        onDismissRequest = { showParamsBottomSheet = false },
+                        title = {
+                            Text("${uiState.activeTool!!.title} Parameters", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 16.sp)
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                uiState.activeTool!!.parameters.forEachIndexed { index, param ->
+                                    val isSelected = (index == uiState.activeParamIndex)
+                                    val value = kotlin.math.round(param.getValue(uiState.editState)).toInt()
+                                    val valStr = if (value > 0) "+$value" else "$value"
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isSelected) AccentCyan.copy(alpha = 0.2f) else DarkSurface)
+                                            .clickable {
+                                                viewModel.setParamIndex(index)
+                                                showParamsBottomSheet = false
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = param.name,
+                                            color = if (isSelected) AccentCyan else TextPrimary,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = valStr,
+                                            color = if (isSelected) AccentCyan else TextSecondary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showParamsBottomSheet = false }) {
+                                Text("Done", color = AccentCyan, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        containerColor = DarkSurfaceElevated
+                    )
+                }
+
+                // 10. Watermark & Export Dialog
+                if (uiState.showExportDialog) {
+                    ExportDialog(
+                        metadata = uiState.metadata,
+                        isProcessing = uiState.isProcessing,
+                        onDismiss = { viewModel.setShowExportDialog(false) },
+                        onExport = { format, quality, preserveExif ->
+                            viewModel.exportImage(context, format, quality, preserveExif)
+                        }
+                    )
+                }
+
+                if (uiState.showWatermarkDialog) {
+                    WatermarkDialog(
+                        config = uiState.editState.watermark,
+                        onDismiss = { viewModel.setShowWatermarkDialog(false) },
+                        onApply = { newConfig ->
+                            viewModel.updateWatermarkConfig(newConfig)
+                        }
+                    )
+                }
+
+                // 11. Offline Custom Preset Creation Dialog
+                if (uiState.showCreatePresetDialog) {
+                    var presetNameInput by remember { mutableStateOf("") }
+                    AlertDialog(
+                        onDismissRequest = { viewModel.setShowCreatePresetDialog(false) },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.BookmarkAdd, null, tint = AccentCyan)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Save Look Offline", fontWeight = FontWeight.Bold, color = TextPrimary)
+                            }
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    "Save your current color grade, tone curves, ambiance, and photo adjustments as a 100% free offline custom preset.",
+                                    color = TextSecondary,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                OutlinedTextField(
+                                    value = presetNameInput,
+                                    onValueChange = { presetNameInput = it },
+                                    label = { Text("Preset Name") },
+                                    placeholder = { Text("e.g. Moody Film Look") },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedBorderColor = AccentCyan,
+                                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                        focusedLabelColor = AccentCyan
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    if (presetNameInput.isNotBlank()) {
+                                        viewModel.createOfflinePreset(context, presetNameInput.trim())
+                                    }
+                                },
+                                enabled = presetNameInput.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                            ) {
+                                Text("Save Preset", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.setShowCreatePresetDialog(false) }) {
+                                Text("Cancel", color = TextMuted)
+                            }
+                        },
+                        containerColor = DarkSurfaceElevated
+                    )
+                }
+
+                // 12. QR Code Preset Sharing Dialog
+                if (uiState.showQrShareDialog) {
+                    QrPresetShareDialog(
+                        presetName = uiState.sharingPresetName,
+                        editState = uiState.editState,
+                        onDismiss = { viewModel.closeQrShare() }
+                    )
+                }
+
+                // 13. QR Code / .lumify Preset Import Dialog
+                if (uiState.showQrImportDialog) {
+                    QrPresetImportDialog(
+                        onDismiss = { viewModel.closeQrImport() },
+                        onImportSuccess = { importedPreset ->
+                            viewModel.importPreset(context, importedPreset)
+                        }
+                    )
+                }
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.LightMode),
-                            tab = EditorTab.LIGHT,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.LIGHT) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.Palette),
-                            tab = EditorTab.COLOR,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.COLOR) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = painterResource(id = R.drawable.ic_tone_curve),
-                            tab = EditorTab.CURVES,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.CURVES) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = painterResource(id = R.drawable.ic_color_wheels),
-                            tab = EditorTab.GRADING,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.GRADING) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.InvertColors),
-                            tab = EditorTab.HSL,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.HSL) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = painterResource(id = R.drawable.ic_mask),
-                            tab = EditorTab.MASKS,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.MASKS) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = painterResource(id = R.drawable.ic_lens_correction),
-                            tab = EditorTab.OPTICS,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.OPTICS) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.ZoomIn),
-                            tab = EditorTab.DETAIL,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.DETAIL) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.Crop),
-                            tab = EditorTab.CROP,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.CROP) }
-                        )
-                    }
-                    item {
-                        EditorTabItem(
-                            icon = rememberVectorPainter(Icons.Default.AutoAwesome),
-                            tab = EditorTab.PRESETS,
-                            activeTab = uiState.activeTab,
-                            onClick = { viewModel.setActiveTab(EditorTab.PRESETS) }
-                        )
-                    }
-                }
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 80.dp)
+                )
             }
         }
-
-        // Export Modal Dialog
-        if (uiState.showExportDialog) {
-            ExportDialog(
-                onDismiss = { viewModel.setShowExportDialog(false) },
-                onConfirmExport = { format, quality, preserveExif ->
-                    viewModel.exportImage(context, format, quality, preserveExif)
-                }
-            )
-        }
-
-        // Photographer Watermark Customization Dialog
-        if (uiState.showWatermarkDialog) {
-            WatermarkDialog(
-                currentConfig = uiState.editState.watermark,
-                onDismiss = { viewModel.setShowWatermarkDialog(false) },
-                onSaveConfig = { viewModel.updateWatermarkConfig(it) }
-            )
-        }
-
-        // Snackbar Host
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 85.dp)
-        )
-    }
-    }
     }
 }
 
 @Composable
-private fun EditorTabItem(
-    icon: Painter,
-    tab: EditorTab,
-    activeTab: EditorTab,
+fun SnapseedTabItem(
+    label: String,
+    isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val isSelected = tab == activeTab
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            painter = icon,
-            contentDescription = tab.label,
-            tint = if (isSelected) AccentCyan else TextSecondary,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
         Text(
-            text = tab.label,
+            text = label,
             color = if (isSelected) AccentCyan else TextMuted,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            fontSize = 13.sp,
+            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+            letterSpacing = 1.2.sp
         )
     }
 }
 
 @Composable
-private fun LightControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val scroll = rememberScrollState()
-    val edit = uiState.editState
-
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
-        AdjustSlider(
-            label = "Exposure",
-            value = edit.exposure,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(exposure = it) } }
-        )
-        AdjustSlider(
-            label = "Contrast",
-            value = edit.contrast,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(contrast = it) } }
-        )
-        AdjustSlider(
-            label = "Highlights",
-            value = edit.highlights,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(highlights = it) } }
-        )
-        AdjustSlider(
-            label = "Shadows",
-            value = edit.shadows,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(shadows = it) } }
-        )
-        AdjustSlider(
-            label = "Whites",
-            value = edit.whites,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(whites = it) } }
-        )
-        AdjustSlider(
-            label = "Blacks",
-            value = edit.blacks,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(blacks = it) } }
-        )
-    }
-}
-
-@Composable
-private fun ColorControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val scroll = rememberScrollState()
-    val edit = uiState.editState
-
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
-        // Quick White Balance Eyedropper CTA
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "White Balance",
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-            LiquidGlassButton(
-                onClick = { viewModel.toggleEyedropper() },
-                modifier = Modifier.height(30.dp),
-                backgroundColor = if (uiState.isEyedropperActive) AccentCyan.copy(alpha = 0.35f) else DarkSurfaceElevated
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_eyedropper),
-                        contentDescription = "Pipette",
-                        tint = AccentCyan,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (uiState.isEyedropperActive) "Cancel Pipette" else "Tap Pipette",
-                        color = AccentCyan,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
-        AdjustSlider(
-            label = "Temperature (Cool / Warm)",
-            value = edit.temperature,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(temperature = it) } }
-        )
-        AdjustSlider(
-            label = "Tint (Green / Magenta)",
-            value = edit.tint,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(tint = it) } }
-        )
-        AdjustSlider(
-            label = "Vibrance",
-            value = edit.vibrance,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(vibrance = it) } }
-        )
-        AdjustSlider(
-            label = "Saturation",
-            value = edit.saturation,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(saturation = it) } }
-        )
-    }
-}
-
-@Composable
-private fun CurvesControls(
-    viewModel: EditorViewModel,
-    uiState: EditorUiState,
-    canvasDimension: Dp = 175.dp
+fun SnapseedLookCard(
+    preset: FilterPreset,
+    isSelected: Boolean,
+    isCustom: Boolean = false,
+    onShareQr: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onClick: () -> Unit
 ) {
+    val isCrazy = (preset.category == "Burhanuddin Crazy")
+    val borderColor = when {
+        isSelected -> AccentCyan
+        isCustom -> AccentEmerald.copy(alpha = 0.6f)
+        isCrazy -> AccentPurple.copy(alpha = 0.5f)
+        else -> Color.White.copy(alpha = 0.12f)
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier = Modifier
+            .width(76.dp)
+            .clickable { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ToneCurveView(
-            curves = uiState.editState.toneCurves,
-            canvasDimension = canvasDimension,
-            onCurvesChange = { updated ->
-                viewModel.updateEditState { it.copy(toneCurves = updated) }
-            }
-        )
-    }
-}
-
-@Composable
-private fun MasksControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val scroll = rememberScrollState()
-    val activeMask = uiState.editState.activeMask
-
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 16.dp)) {
-        // Mask Type Selection Ribbon
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    when {
+                        isCustom -> AccentEmerald.copy(alpha = 0.15f)
+                        isCrazy -> AccentPurple.copy(alpha = 0.2f)
+                        else -> DarkSurfaceElevated
+                    }
+                )
+                .border(if (isSelected) 2.dp else 1.dp, borderColor, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
         ) {
-            LiquidGlassButton(
-                onClick = { viewModel.createOrUpdateMask(MaskType.LINEAR_GRADIENT) },
-                modifier = Modifier.weight(1f).height(36.dp),
-                backgroundColor = if (activeMask?.type == MaskType.LINEAR_GRADIENT) AccentCyan.copy(alpha = 0.25f) else DarkSurfaceElevated
-            ) {
-                Text(
-                    text = "Linear Gradient",
-                    color = if (activeMask?.type == MaskType.LINEAR_GRADIENT) AccentCyan else TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            LiquidGlassButton(
-                onClick = { viewModel.createOrUpdateMask(MaskType.RADIAL_GRADIENT) },
-                modifier = Modifier.weight(1f).height(36.dp),
-                backgroundColor = if (activeMask?.type == MaskType.RADIAL_GRADIENT) AccentCyan.copy(alpha = 0.25f) else DarkSurfaceElevated
-            ) {
-                Text(
-                    text = "Radial Vignette",
-                    color = if (activeMask?.type == MaskType.RADIAL_GRADIENT) AccentCyan else TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (activeMask != null) {
-                LiquidGlassButton(
-                    onClick = { viewModel.clearMask() },
-                    modifier = Modifier.height(36.dp),
-                    backgroundColor = Color.Red.copy(alpha = 0.2f)
-                ) {
-                    Text(
-                        text = "Clear",
-                        color = Color(0xFFFF6B6B),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp)
-                    )
-                }
-            }
-        }
-
-        if (activeMask != null) {
-            Text(
-                text = "Adjust Mask Tone (${activeMask.type.label}):",
-                color = AccentCyan,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(vertical = 2.dp)
+            Icon(
+                imageVector = when {
+                    isCustom -> Icons.Default.Bookmark
+                    isCrazy -> Icons.Default.AutoAwesome
+                    else -> Icons.Default.Palette
+                },
+                contentDescription = preset.name,
+                tint = when {
+                    isSelected -> AccentCyan
+                    isCustom -> AccentEmerald
+                    isCrazy -> AccentPurple
+                    else -> TextSecondary
+                },
+                modifier = Modifier.size(24.dp)
             )
 
-            AdjustSlider(
-                label = "Mask Exposure",
-                value = activeMask.exposure,
-                onValueChange = { v ->
-                    viewModel.updateEditState { it.copy(activeMask = activeMask.copy(exposure = v)) }
-                }
-            )
-            AdjustSlider(
-                label = "Mask Contrast",
-                value = activeMask.contrast,
-                onValueChange = { v ->
-                    viewModel.updateEditState { it.copy(activeMask = activeMask.copy(contrast = v)) }
-                }
-            )
-            AdjustSlider(
-                label = "Mask Saturation",
-                value = activeMask.saturation,
-                onValueChange = { v ->
-                    viewModel.updateEditState { it.copy(activeMask = activeMask.copy(saturation = v)) }
-                }
-            )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(140.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Select Linear Gradient (sky darkening) or Radial Vignette to apply selective local edits",
-                    color = TextMuted,
-                    fontSize = 12.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun OpticsControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val scroll = rememberScrollState()
-    val edit = uiState.editState
-
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
-        AdjustSlider(
-            label = "Lens Distortion (Barrel / Pincushion)",
-            value = edit.lensDistortion,
-            range = -100f..100f,
-            defaultValue = 0f,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(lensDistortion = it) } }
-        )
-        AdjustSlider(
-            label = "Defringe (Chromatic Aberration Removal)",
-            value = edit.defringeAmount,
-            range = 0f..100f,
-            defaultValue = 0f,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(defringeAmount = it) } }
-        )
-    }
-}
-
-@Composable
-private fun HslControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val currentChannel = uiState.activeHslChannel
-    val adjustment = uiState.editState.hslAdjustments[currentChannel] ?: HslAdjustment()
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Horizontal Color Dots Ribbon
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            items(HslChannel.values()) { channel ->
-                val isSelected = channel == currentChannel
-                val channelColor = getHslChannelColor(channel)
-
+            // If QR share callback available, show small QR chip on top left
+            if (onShareQr != null) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .align(Alignment.TopStart)
+                        .padding(3.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
-                        .background(channelColor)
-                        .clickable { viewModel.setActiveHslChannel(channel) }
-                        .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.25f),
-                            shape = CircleShape
-                        ),
+                        .background(DarkBackground.copy(alpha = 0.85f))
+                        .clickable { onShareQr() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_color_droplet),
-                        contentDescription = channel.displayName,
-                        tint = if (isSelected) Color.White else Color.Black.copy(alpha = 0.45f),
-                        modifier = Modifier.size(16.dp)
+                        imageVector = Icons.Default.QrCode2,
+                        contentDescription = "Share Preset QR",
+                        tint = AccentCyan,
+                        modifier = Modifier.size(11.dp)
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        AdjustSlider(
-            label = "${currentChannel.displayName} Hue Shift",
-            value = adjustment.hueShift,
-            onValueChange = { viewModel.updateHslAdjustment(currentChannel, adjustment.copy(hueShift = it)) },
-            activeColor = getHslChannelColor(currentChannel)
-        )
-        AdjustSlider(
-            label = "${currentChannel.displayName} Saturation",
-            value = adjustment.saturation,
-            onValueChange = { viewModel.updateHslAdjustment(currentChannel, adjustment.copy(saturation = it)) },
-            activeColor = getHslChannelColor(currentChannel)
-        )
-        AdjustSlider(
-            label = "${currentChannel.displayName} Luminance",
-            value = adjustment.luminance,
-            onValueChange = { viewModel.updateHslAdjustment(currentChannel, adjustment.copy(luminance = it)) },
-            activeColor = getHslChannelColor(currentChannel)
-        )
-    }
-}
-
-@Composable
-private fun DetailControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val scroll = rememberScrollState()
-    val edit = uiState.editState
-
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
-        AdjustSlider(
-            label = "Sharpness",
-            value = edit.sharpness,
-            range = 0f..100f,
-            defaultValue = 0f,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(sharpness = it) } }
-        )
-        AdjustSlider(
-            label = "Clarity (Midtone Contrast)",
-            value = edit.clarity,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(clarity = it) } }
-        )
-        AdjustSlider(
-            label = "Vignette",
-            value = edit.vignette,
-            range = 0f..100f,
-            defaultValue = 0f,
-            onValueChange = { viewModel.updateEditState { s -> s.copy(vignette = it) } }
-        )
-    }
-}
-
-@Composable
-private fun CropControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Use gesture handles on canvas to crop",
-            color = TextPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Aspect Ratio: ${uiState.editState.selectedAspectRatio.label} • Rotation: ${uiState.editState.rotationDegrees.toInt()}°",
-            color = TextMuted,
-            fontSize = 12.sp
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        AdjustSlider(
-            label = "Fine Tilt Angle",
-            value = uiState.editState.fineRotation,
-            range = -45f..45f,
-            defaultValue = 0f,
-            unitSuffix = "°",
-            onValueChange = { viewModel.updateEditState { s -> s.copy(fineRotation = it) } }
-        )
-    }
-}
-
-@Composable
-private fun PresetsControls(viewModel: EditorViewModel, uiState: EditorUiState) {
-    val context = LocalContext.current
-    val presets = PresetRepository.allPresets
-
-    // File picker launcher for custom .cube 3D LUT
-    val lutFileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.importCubeLut(context, it) }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        // 3D LUT Action Bar
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Studio Presets & 3D LUTs",
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            LiquidGlassButton(
-                onClick = { lutFileLauncher.launch("*/*") },
-                modifier = Modifier.height(30.dp),
-                backgroundColor = if (uiState.editState.customLut != null) AccentCyan.copy(alpha = 0.3f) else DarkSurfaceElevated
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            // If custom offline preset, show small delete chip on top right
+            if (isCustom && onDelete != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(3.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(DarkBackground.copy(alpha = 0.85f))
+                        .clickable { onDelete() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_cube_lut),
-                        contentDescription = "Import LUT",
-                        tint = AccentCyan,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (uiState.editState.customLut != null) "LUT: ${uiState.editState.customLut?.title}" else "Import .cube LUT",
-                        color = AccentCyan,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Delete Preset",
+                        tint = TextMuted,
+                        modifier = Modifier.size(11.dp)
                     )
                 }
             }
         }
 
-        // If custom LUT loaded, show intensity slider
-        if (uiState.editState.customLut != null) {
-            AdjustSlider(
-                label = "3D LUT Intensity",
-                value = uiState.editState.lutIntensity,
-                range = 0f..100f,
-                defaultValue = 100f,
-                onValueChange = { v ->
-                    viewModel.updateEditState { it.copy(lutIntensity = v) }
-                }
-            )
-        }
+        Spacer(modifier = Modifier.height(4.dp))
 
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-        ) {
-            items(presets) { preset ->
-                val isApplied = preset.id == uiState.editState.appliedPresetId
-
-                LiquidGlassSurface(
-                    modifier = Modifier
-                        .width(130.dp)
-                        .clickable { viewModel.applyPreset(preset) },
-                    shape = RoundedCornerShape(18.dp),
-                    backgroundColor = if (isApplied) AccentCyan.copy(alpha = 0.15f) else DarkSurfaceElevated.copy(alpha = 0.7f),
-                    borderWidth = if (isApplied) 2.dp else 1.dp
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = preset.name,
-                            color = if (isApplied) AccentCyan else TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = preset.description,
-                            color = TextMuted,
-                            fontSize = 10.sp,
-                            lineHeight = 14.sp,
-                            maxLines = 3
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = preset.category.uppercase(),
-                            color = if (isApplied) AccentCyan else TextSecondary,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun getHslChannelColor(channel: HslChannel): Color {
-    return when (channel) {
-        HslChannel.RED -> HslRed
-        HslChannel.ORANGE -> HslOrange
-        HslChannel.YELLOW -> HslYellow
-        HslChannel.GREEN -> HslGreen
-        HslChannel.CYAN -> HslCyan
-        HslChannel.BLUE -> HslBlue
-        HslChannel.PURPLE -> HslPurple
-        HslChannel.MAGENTA -> HslMagenta
+        Text(
+            text = preset.name,
+            color = when {
+                isSelected -> AccentCyan
+                isCustom -> AccentEmerald
+                isCrazy -> AccentPurple
+                else -> TextPrimary
+            },
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }

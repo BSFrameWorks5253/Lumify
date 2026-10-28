@@ -10,6 +10,11 @@ import android.graphics.Shader
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,45 +26,51 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Diamond
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.painterResource
-import com.lumify.editor.R
-import com.lumify.editor.export.BatchQueueManager
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.widthIn
 import com.lumify.editor.core.ImageMetadata
 import com.lumify.editor.ui.components.AmbientLiquidBackdrop
-import com.lumify.editor.ui.components.LiquidGlassButton
 import com.lumify.editor.ui.components.LiquidGlassSurface
-import com.lumify.editor.ui.components.LumifyLogoTile
-import com.lumify.editor.ui.theme.AccentAmber
 import com.lumify.editor.ui.theme.AccentCyan
+import com.lumify.editor.ui.theme.AccentEmerald
 import com.lumify.editor.ui.theme.AccentPurple
 import com.lumify.editor.ui.theme.DarkBackground
 import com.lumify.editor.ui.theme.DarkSurface
@@ -75,341 +86,432 @@ fun HomeScreen(
     onLaunchCamera: () -> Unit
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
+    var showMenu by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showTutorialDialog by remember { mutableStateOf(false) }
+    var showCrazyLabDialog by remember { mutableStateOf(false) }
 
-    // Photo picker launcher (accepts any image, RAW, etc.)
+    // System Photo picker launcher (accepts any image, RAW, etc.)
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { onImageSelected(it) }
     }
 
-    AmbientLiquidBackdrop {
+    // Subtle breathing pulse animation for the iconic center plus button
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    AmbientLiquidBackdrop(enableDrift = true) {
         Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable { photoPickerLauncher.launch("image/*") }
         ) {
-            Column(
+            // 1. Top Bar (Snapseed Style)
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 680.dp)
+                    .fillMaxWidth()
                     .statusBarsPadding()
-                    .verticalScroll(scrollState)
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Adobe-style Lumify App Tile Logo with Aperture Iris
-            LumifyLogoTile(size = 84.dp)
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = "LUMIFY",
-                color = TextPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 3.sp
-            )
-
-            Text(
-                text = "Master RAW & Photo Editor",
-                color = AccentCyan,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            val batchQueue by BatchQueueManager.queue.collectAsState()
-            val isBatchExporting by BatchQueueManager.isExporting.collectAsState()
-
-            if (batchQueue.isNotEmpty()) {
-                LiquidGlassSurface(
+                // "OPEN" Button on the left
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    backgroundColor = AccentCyan.copy(alpha = 0.12f),
-                    borderWidth = 1.5.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_batch_queue),
-                                contentDescription = "Batch Queue",
-                                tint = AccentCyan,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Batch Export Queue",
-                                    color = TextPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${batchQueue.size} photos queued for export",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-
-                        LiquidGlassButton(
-                            onClick = {
-                                if (isBatchExporting) {
-                                    BatchQueueManager.cancelBatchExport(context)
-                                } else {
-                                    BatchQueueManager.startBatchExport(context)
-                                }
-                            },
-                            modifier = Modifier.height(34.dp),
-                            backgroundColor = AccentCyan.copy(alpha = 0.3f)
-                        ) {
-                            Text(
-                                text = if (isBatchExporting) "Cancel Export" else "Export All",
-                                color = AccentCyan,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Main Action Card: Open from Gallery / Files
-            LiquidGlassSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { photoPickerLauncher.launch("*/*") },
-                shape = RoundedCornerShape(24.dp),
-                backgroundColor = DarkSurface.copy(alpha = 0.85f),
-                borderWidth = 1.5.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(22.dp),
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(AccentCyan.copy(alpha = 0.15f))
+                        .clickable { photoPickerLauncher.launch("image/*") }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(AccentCyan.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Open Photo",
-                            tint = AccentCyan,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Open Photo / RAW",
-                            color = TextPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = "Select any DNG, CR2, NEF, ARW, JPG, or PNG",
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = "Open",
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "OPEN",
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Secondary Action: Test with Sample RAW Landscape
-            LiquidGlassSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val (sampleBmp, sampleMeta) = generateSampleProImage()
-                        onSampleSelected(sampleBmp, sampleMeta)
-                    },
-                shape = RoundedCornerShape(24.dp),
-                backgroundColor = DarkSurfaceElevated.copy(alpha = 0.6f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(AccentAmber.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Sample Photo",
-                            tint = AccentAmber,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Load Sample Pro RAW",
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Test instant HDR landscape with live HSL color grading",
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
+                // Brand Subtitle
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "SNAPSEED",
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.5.sp
+                    )
+                    Text(
+                        text = "BY BURHANUDDIN",
+                        color = AccentCyan,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Tertiary Action: Capture Photo with Camera
-            LiquidGlassSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onLaunchCamera() },
-                shape = RoundedCornerShape(24.dp),
-                backgroundColor = DarkSurfaceElevated.copy(alpha = 0.6f)
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(AccentPurple.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                // Right action buttons
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onLaunchCamera() }) {
                         Icon(
                             imageVector = Icons.Default.CameraAlt,
                             contentDescription = "Camera",
-                            tint = AccentPurple,
-                            modifier = Modifier.size(24.dp)
+                            tint = TextPrimary
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = TextPrimary
+                            )
+                        }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Capture with CameraX",
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Shoot photos directly into the editing studio",
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(DarkSurfaceElevated)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Gestures & Stack Tutorial", color = TextPrimary) },
+                                leadingIcon = { Icon(Icons.Default.School, null, tint = AccentCyan) },
+                                onClick = {
+                                    showMenu = false
+                                    showTutorialDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Burhanuddin's Crazy Lab", color = TextPrimary) },
+                                leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = AccentPurple) },
+                                onClick = {
+                                    showMenu = false
+                                    showCrazyLabDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("About Snapseed Burhanuddin Edition", color = TextPrimary) },
+                                leadingIcon = { Icon(Icons.Default.Info, null, tint = AccentEmerald) },
+                                onClick = {
+                                    showMenu = false
+                                    showAboutDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            // 2. Central Iconic Snapseed "+" Button
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(130.dp)
+                        .scale(pulseScale)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    DarkSurfaceElevated,
+                                    DarkSurface
+                                )
+                            )
+                        )
+                        .border(2.dp, AccentCyan.copy(alpha = 0.5f), CircleShape)
+                        .clickable { photoPickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Tap anywhere to open a photo",
+                        tint = AccentCyan,
+                        modifier = Modifier.size(54.dp)
+                    )
+                }
 
-            // Feature Highlights
-            Text(
-                text = "ENGINE CAPABILITIES",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.align(Alignment.Start)
-            )
+                Spacer(modifier = Modifier.height(24.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Tap anywhere to open a photo",
+                    color = TextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
+                )
 
-            FeatureItem(
-                icon = Icons.Default.Tune,
-                title = "32-Bit Floating Point Color Pipeline",
-                description = "Non-destructive exposure, shadows/highlights recovery, and Kelvin white balance."
-            )
+                Spacer(modifier = Modifier.height(6.dp))
 
-            FeatureItem(
-                icon = Icons.Default.Diamond,
-                title = "8-Channel HSL Color Grading",
-                description = "Independent control of Hue, Saturation, and Luminance for Red, Orange, Yellow, Green, Cyan, Blue, Purple, Magenta."
-            )
+                Text(
+                    text = "RAW DNG, CR2, NEF, ARW, JPG, PNG",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.sp
+                )
 
-            FeatureItem(
-                icon = Icons.Default.AutoAwesome,
-                title = "Liquid Glass Interface",
-                description = "Hardware-accelerated frosted glass panels with specular rim lighting and tactile haptic controls."
-            )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AccentEmerald.copy(alpha = 0.12f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Diamond,
+                        contentDescription = null,
+                        tint = AccentEmerald,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Crafted by Burhanuddin • Crazy Features Active",
+                        color = AccentEmerald,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // 3. Bottom Bar: Quick Test Sample Photos Carousel
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "OR TRY A TEST PHOTO (1-TAP INSTANT EDIT)",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+
+                LazyRow(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        SampleChip(
+                            title = "Sunset Mountain",
+                            subtitle = "HDR DNG RAW",
+                            accentColor = AccentCyan,
+                            onClick = {
+                                val (bmp, meta) = generateSampleProImage()
+                                onSampleSelected(bmp, meta)
+                            }
+                        )
+                    }
+
+                    item {
+                        SampleChip(
+                            title = "Cyberpunk Tokyo",
+                            subtitle = "Neon Crazy Lab",
+                            accentColor = AccentPurple,
+                            onClick = {
+                                val (bmp, meta) = generateSampleCyberpunk()
+                                onSampleSelected(bmp, meta)
+                            }
+                        )
+                    }
+
+                    item {
+                        SampleChip(
+                            title = "Studio Portrait",
+                            subtitle = "Face Glow RAW",
+                            accentColor = AccentEmerald,
+                            onClick = {
+                                val (bmp, meta) = generateSamplePortrait()
+                                onSampleSelected(bmp, meta)
+                            }
+                        )
+                    }
+
+                    item {
+                        SampleChip(
+                            title = "Modern Architecture",
+                            subtitle = "Structure & Detail",
+                            accentColor = TextPrimary,
+                            onClick = {
+                                val (bmp, meta) = generateSampleArchitecture()
+                                onSampleSelected(bmp, meta)
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
+
+    // Dialogs: About, Tutorial, Crazy Lab
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = {
+                Text(
+                    text = "Snapseed • Burhanuddin Edition",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Developed with ❤️ by Burhanuddin.\n\n" +
+                               "Faithfully recreating Google Snapseed's legendary gesture-based photo editing engine while integrating cutting-edge pro features:\n\n" +
+                               "• Pure vertical swipe to choose parameter\n" +
+                               "• Smooth horizontal swipe to adjust values\n" +
+                               "• Snapseed Stacks / View Edits history system\n" +
+                               "• 20+ Iconic Tools: Tune Image, Details, Curves, White Balance, Glamour Glow, Drama, Vintage, Grainy Film, Retrolux, Noir, Portrait, Lens Blur\n" +
+                               "• Burhanuddin Crazy Features: Cyberpunk Neon Matrix, Cinema 3-Way Color Wheels, Live Zebra Waveform, and Artist Signature Stamp.",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("Awesome", color = AccentCyan, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
+    }
+
+    if (showTutorialDialog) {
+        AlertDialog(
+            onDismissRequest = { showTutorialDialog = false },
+            title = {
+                Text("How to Edit Like Snapseed", fontWeight = FontWeight.Bold, color = TextPrimary)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "1. Swipe Up & Down:\n" +
+                               "Selects the parameter (e.g. Brightness, Contrast, Saturation, Ambiance, Highlights, Shadows, Warmth).\n\n" +
+                               "2. Swipe Left & Right:\n" +
+                               "Adjusts the intensity of the active parameter (-100 to +100).\n\n" +
+                               "3. Press & Hold Canvas:\n" +
+                               "Instantly compare with your unedited original photo!\n\n" +
+                               "4. Stacks (View Edits):\n" +
+                               "Tap the layers icon at top to view past edit layers, adjust any tool retroactively, or revert.",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTutorialDialog = false }) {
+                    Text("Got it", color = AccentCyan, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
+    }
+
+    if (showCrazyLabDialog) {
+        AlertDialog(
+            onDismissRequest = { showCrazyLabDialog = false },
+            title = {
+                Text("Burhanuddin's Crazy Lab", fontWeight = FontWeight.Bold, color = AccentPurple)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Supercharge your photos with exclusive features beyond standard Snapseed:\n\n" +
+                               "🔥 Cyberpunk Neon Bloom: Sci-fi electric blues and hot magenta highlights.\n" +
+                               "🎬 Cinema 3-Way Color Wheels: Hollywood Lift, Gamma & Gain split toning.\n" +
+                               "📊 False Color & Zebra Stripes: High-end camera exposure clipping diagnostics.\n" +
+                               "✍️ Burhanuddin Artist Signature: Custom watermark overlay for your photography.\n" +
+                               "🔍 8x Precision Loupe: Inspect individual pixel colors with live RGB readout.",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCrazyLabDialog = false }) {
+                    Text("Let's Create!", color = AccentPurple, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = DarkSurfaceElevated
+        )
     }
 }
 
 @Composable
-private fun FeatureItem(
-    icon: ImageVector,
+fun SampleChip(
     title: String,
-    description: String
+    subtitle: String,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit
 ) {
-    Row(
+    LiquidGlassSurface(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.Top
+            .clickable { onClick() }
+            .width(155.dp),
+        shape = RoundedCornerShape(16.dp),
+        backgroundColor = DarkSurface.copy(alpha = 0.85f),
+        borderWidth = 1.dp
     ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = AccentCyan,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
                 color = TextPrimary,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = description,
+                text = subtitle,
                 color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 15.sp
+                fontSize = 10.sp
             )
         }
     }
@@ -417,7 +519,6 @@ private fun FeatureItem(
 
 /**
  * Generates an HDR Sunset Mountain sample bitmap with rich color information
- * so the user can immediately test all editing controls without needing local files.
  */
 fun generateSampleProImage(): Pair<Bitmap, ImageMetadata> {
     val width = 1200
@@ -430,10 +531,10 @@ fun generateSampleProImage(): Pair<Bitmap, ImageMetadata> {
         shader = LinearGradient(
             0f, 0f, 0f, height * 0.65f,
             intArrayOf(
-                Color.rgb(20, 30, 85),   // Deep Indigo Night Sky
-                Color.rgb(180, 50, 90),  // Magenta Sunset
-                Color.rgb(255, 120, 40), // Vivid Orange
-                Color.rgb(255, 210, 80)  // Golden Sun Horizon
+                Color.rgb(20, 30, 85),
+                Color.rgb(180, 50, 90),
+                Color.rgb(255, 120, 40),
+                Color.rgb(255, 210, 80)
             ),
             floatArrayOf(0f, 0.4f, 0.75f, 1f),
             Shader.TileMode.CLAMP
@@ -452,7 +553,7 @@ fun generateSampleProImage(): Pair<Bitmap, ImageMetadata> {
     }
     canvas.drawCircle(width * 0.55f, height * 0.45f, 160f, sunPaint)
 
-    // Distant Mountain Silhouette
+    // Mountain Silhouette
     val mountainPaint = Paint().apply {
         shader = LinearGradient(
             0f, height * 0.4f, 0f, height.toFloat(),
@@ -475,7 +576,7 @@ fun generateSampleProImage(): Pair<Bitmap, ImageMetadata> {
     }
     canvas.drawPath(mountainPath, mountainPaint)
 
-    // Foreground Lake Reflection
+    // Lake Reflection
     val lakePaint = Paint().apply {
         shader = LinearGradient(
             0f, height * 0.65f, 0f, height.toFloat(),
@@ -501,7 +602,175 @@ fun generateSampleProImage(): Pair<Bitmap, ImageMetadata> {
         aperture = "f/2.8",
         iso = "100",
         shutterSpeed = "1/250 s",
-        dateTime = "2026:10:27 08:30:00",
+        dateTime = "2026:10:28 08:30:00",
+        isRaw = true
+    )
+
+    return Pair(bitmap, metadata)
+}
+
+/**
+ * Generates Cyberpunk Tokyo night sample photo
+ */
+fun generateSampleCyberpunk(): Pair<Bitmap, ImageMetadata> {
+    val width = 1200
+    val height = 900
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    // Dark moody city night background
+    val bgPaint = Paint().apply {
+        shader = LinearGradient(
+            0f, 0f, 0f, height.toFloat(),
+            Color.rgb(10, 8, 20),
+            Color.rgb(5, 5, 12),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+    // Neon Cyan glow
+    val cyanGlow = Paint().apply {
+        shader = RadialGradient(
+            width * 0.3f, height * 0.4f, 300f,
+            intArrayOf(Color.rgb(0, 245, 255), Color.argb(80, 0, 180, 220), Color.TRANSPARENT),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawCircle(width * 0.3f, height * 0.4f, 300f, cyanGlow)
+
+    // Neon Magenta glow
+    val magentaGlow = Paint().apply {
+        shader = RadialGradient(
+            width * 0.75f, height * 0.45f, 320f,
+            intArrayOf(Color.rgb(255, 0, 128), Color.argb(90, 200, 0, 150), Color.TRANSPARENT),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawCircle(width * 0.75f, height * 0.45f, 320f, magentaGlow)
+
+    // Wet street reflection
+    val streetPaint = Paint().apply {
+        shader = LinearGradient(
+            0f, height * 0.65f, 0f, height.toFloat(),
+            intArrayOf(Color.rgb(30, 10, 35), Color.rgb(8, 15, 25)),
+            floatArrayOf(0f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawRect(0f, height * 0.65f, width.toFloat(), height.toFloat(), streetPaint)
+
+    val metadata = ImageMetadata(
+        format = "ARW (Sony RAW)",
+        width = width,
+        height = height,
+        cameraMake = "Sony",
+        cameraModel = "Alpha 1",
+        lensModel = "FE 50mm F1.2 GM",
+        focalLength = "50 mm",
+        aperture = "f/1.2",
+        iso = "800",
+        shutterSpeed = "1/125 s",
+        dateTime = "2026:10:28 21:15:00",
+        isRaw = true
+    )
+
+    return Pair(bitmap, metadata)
+}
+
+/**
+ * Generates Studio Portrait sample
+ */
+fun generateSamplePortrait(): Pair<Bitmap, ImageMetadata> {
+    val width = 900
+    val height = 1200
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    // Soft warm background
+    val bgPaint = Paint().apply {
+        shader = RadialGradient(
+            width * 0.5f, height * 0.4f, 600f,
+            intArrayOf(Color.rgb(90, 65, 55), Color.rgb(25, 18, 15)),
+            floatArrayOf(0f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+    // Warm Key Light (Beauty Dish)
+    val keyLight = Paint().apply {
+        shader = RadialGradient(
+            width * 0.5f, height * 0.45f, 260f,
+            intArrayOf(Color.rgb(255, 215, 185), Color.rgb(210, 150, 120), Color.TRANSPARENT),
+            floatArrayOf(0f, 0.6f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawCircle(width * 0.5f, height * 0.45f, 260f, keyLight)
+
+    val metadata = ImageMetadata(
+        format = "CR3 (Canon RAW)",
+        width = width,
+        height = height,
+        cameraMake = "Canon",
+        cameraModel = "EOS R5",
+        lensModel = "RF 85mm F1.2 L USM",
+        focalLength = "85 mm",
+        aperture = "f/1.4",
+        iso = "100",
+        shutterSpeed = "1/200 s",
+        dateTime = "2026:10:28 14:00:00",
+        isRaw = true
+    )
+
+    return Pair(bitmap, metadata)
+}
+
+/**
+ * Generates High Structure Architecture sample
+ */
+fun generateSampleArchitecture(): Pair<Bitmap, ImageMetadata> {
+    val width = 1200
+    val height = 900
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    // Clear sky
+    val skyPaint = Paint().apply {
+        shader = LinearGradient(
+            0f, 0f, 0f, height * 0.5f,
+            Color.rgb(40, 80, 140),
+            Color.rgb(140, 180, 220),
+            Shader.TileMode.CLAMP
+        )
+    }
+    canvas.drawRect(0f, 0f, width.toFloat(), height * 0.5f, skyPaint)
+
+    // Structural concrete pillars and diagonal lines
+    val buildingPaint = Paint().apply {
+        color = Color.rgb(210, 210, 215)
+        isAntiAlias = true
+    }
+    for (i in 0..8) {
+        val x = i * 150f
+        canvas.drawRect(x, height * 0.35f, x + 85f, height.toFloat(), buildingPaint)
+    }
+
+    val metadata = ImageMetadata(
+        format = "NEF (Nikon RAW)",
+        width = width,
+        height = height,
+        cameraMake = "Nikon",
+        cameraModel = "Z8",
+        lensModel = "NIKKOR Z 14-24mm f/2.8 S",
+        focalLength = "18 mm",
+        aperture = "f/8.0",
+        iso = "64",
+        shutterSpeed = "1/500 s",
+        dateTime = "2026:10:28 11:45:00",
         isRaw = true
     )
 

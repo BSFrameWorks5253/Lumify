@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">Lumify</string>
-    <string name="raw_photo_editor">Pro RAW &amp; Photo Editor</string>
+    <string name="app_name">Snapseed by Burhanuddin</string>
+    <string name="raw_photo_editor">Snapseed • Burhanuddin Edition</string>
     <string name="open_image">Open Image</string>
     <string name="take_photo">Take RAW Photo</string>
     <string name="export_image">Export</string>

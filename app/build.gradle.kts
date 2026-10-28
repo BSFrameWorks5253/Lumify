@@ -80,9 +80,10 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // Image & Concurrency
+    // Image & Concurrency & QR
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.zxing.core)
 
     // Testing
     testImplementation(libs.junit)

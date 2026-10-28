@@ -17,27 +17,52 @@ object ImageProcessor {
     suspend fun processImage(
         source: Bitmap,
         state: EditState,
+        secondaryBitmap: Bitmap? = null,
         isExport: Boolean = false
     ): Bitmap = withContext(Dispatchers.Default) {
-        if (!state.isModified && !isExport) {
+        if (!state.isModified && !isExport && secondaryBitmap == null) {
             return@withContext source
         }
 
         // 1. Spatial Transforms (Crop, Rotate, Flip, Lens Distortion)
         val transformed = applySpatialTransforms(source, state)
 
-        // 2. Color, Tone Curves, HSL, Masking & Detail Pipeline
-        val processed = applyColorAndDetailPipeline(transformed, state)
+        // 2. Healing / Spot Removal (Applied first to raw pixels before color grading)
+        val healed = if (state.healingStrokes.isNotEmpty()) {
+            applyHealing(transformed, state.healingStrokes)
+        } else {
+            transformed
+        }
 
+        // 3. Color, Tone Curves, HSL, Masking & Detail Pipeline
+        val processed = applyColorAndDetailPipeline(healed, state)
+
+        if (healed != source && healed != transformed && healed != processed) {
+            healed.recycle()
+        }
         if (transformed != source && transformed != processed) {
             transformed.recycle()
         }
 
-        // 3. Photographer Watermarking (Text or Graphic)
-        val finalResult = if (state.watermark.enabled) {
-            applyWatermark(processed, state.watermark)
+        // 4. Snapseed Selective U-Point Control Points
+        val selectiveApplied = if (state.selectivePoints.any { !it.isDefault }) {
+            applySelectiveUPoint(processed, state.selectivePoints)
         } else {
             processed
+        }
+
+        // 5. Double Exposure
+        val doubleExposureApplied = if (!state.doubleExposure.isDefault && secondaryBitmap != null) {
+            applyDoubleExposure(selectiveApplied, secondaryBitmap, state.doubleExposure)
+        } else {
+            selectiveApplied
+        }
+
+        // 6. Photographer Watermarking (Text or Graphic)
+        val finalResult = if (state.watermark.enabled) {
+            applyWatermark(doubleExposureApplied, state.watermark)
+        } else {
+            doubleExposureApplied
         }
 
         finalResult
@@ -231,6 +256,92 @@ object ImageProcessor {
                 bf += blacksShift * weight * 40f
             }
 
+            // Snapseed Ambiance
+            if (state.ambiance != 0f) {
+                val amb = state.ambiance / 100f
+                val shadowBoost = (1f - normalizedLum) * amb * 32f
+                val midBoost = (1f - abs(normalizedLum - 0.5f) * 2f).coerceIn(0f, 1f) * amb * 16f
+                rf += shadowBoost + midBoost
+                gf += shadowBoost + midBoost
+                bf += shadowBoost + midBoost
+            }
+
+            // Snapseed Glamour Glow
+            if (state.glamourGlow > 0f) {
+                val gg = state.glamourGlow / 100f
+                val glow = normalizedLum.pow(1.6f) * gg * 40f
+                rf += glow * 1.05f
+                gf += glow * 0.98f
+                bf += glow * 0.90f
+            }
+
+            // Snapseed Drama
+            if (state.drama != 0f) {
+                val dr = state.drama / 100f
+                val delta = (normalizedLum - 0.5f) * dr * 50f
+                rf += delta
+                gf += delta
+                bf += delta
+            }
+
+            // Snapseed Vintage
+            if (state.vintage > 0f) {
+                val vt = state.vintage / 100f
+                rf = max(rf, vt * 28f) + vt * 14f
+                gf = max(gf, vt * 20f) + vt * 4f
+                bf = max(bf, vt * 12f) - vt * 8f
+            }
+
+            // Snapseed Grainy Film
+            if (state.grain > 0f) {
+                val gr = state.grain / 100f
+                val px = i % width
+                val py = i / width
+                val noise = (((px * 13 + py * 79) % 101) / 50f - 1f) * gr * 22f
+                rf += noise
+                gf += noise
+                bf += noise
+            }
+
+            // Burhanuddin Crazy Feature: Cyberpunk Neon Matrix
+            if (state.cyberpunkNeon > 0f) {
+                val cb = state.cyberpunkNeon / 100f
+                if (normalizedLum < 0.5f) {
+                    val darkWeight = (0.5f - normalizedLum) * 2f
+                    bf += cb * darkWeight * 55f
+                    gf += cb * darkWeight * 30f
+                    rf -= cb * darkWeight * 20f
+                } else {
+                    val lightWeight = (normalizedLum - 0.5f) * 2f
+                    rf += cb * lightWeight * 60f
+                    bf += cb * lightWeight * 45f
+                    gf -= cb * lightWeight * 15f
+                }
+            }
+
+            // Photoshop PC Pro: Color Balance (Cyan/Red, Magenta/Green, Yellow/Blue)
+            if (state.colorBalanceCyanRed != 0f || state.colorBalanceMagentaGreen != 0f || state.colorBalanceYellowBlue != 0f) {
+                rf += state.colorBalanceCyanRed * 0.35f
+                gf += state.colorBalanceMagentaGreen * 0.35f
+                bf += state.colorBalanceYellowBlue * 0.35f
+            }
+
+            // Photoshop PC Pro: Input Levels & Midtone Gamma Stretch
+            if (state.levelsBlack > 0f || state.levelsWhite > 0f || state.levelsGamma != 0f) {
+                val bIn = state.levelsBlack * 0.7f
+                val wIn = 255f - state.levelsWhite * 0.7f
+                val invR = if (wIn > bIn) 255f / (wIn - bIn) else 1f
+                val gamma = 2.0.pow((-state.levelsGamma / 60.0).toDouble()).toFloat()
+
+                val applyLvl = { v: Float ->
+                    val norm = ((v - bIn) * invR).coerceIn(0f, 255f) / 255f
+                    norm.pow(gamma) * 255f
+                }
+                rf = applyLvl(rf)
+                gf = applyLvl(gf)
+                bf = applyLvl(bf)
+            }
+
             var rClamped = rf.coerceIn(0f, 255f).toInt()
             var gClamped = gf.coerceIn(0f, 255f).toInt()
             var bClamped = bf.coerceIn(0f, 255f).toInt()
@@ -336,6 +447,31 @@ object ImageProcessor {
                 rClamped = lutR
                 gClamped = lutG
                 bClamped = lutB
+            }
+
+            // Noir & Black and White
+            if (state.noir > 0f || state.blackAndWhite > 0f) {
+                val bwAmount = max(state.noir / 100f, state.blackAndWhite / 100f)
+                var grey = 0.299f * rClamped + 0.587f * gClamped + 0.114f * bClamped
+                if (state.noir > 0f) {
+                    val nr = state.noir / 100f
+                    grey = if (grey < 70f) grey + (70f - grey) * nr * 0.35f else (grey - 128f) * (1f + nr * 0.4f) + 128f
+                }
+                rClamped = (rClamped * (1f - bwAmount) + grey * bwAmount).toInt().coerceIn(0, 255)
+                gClamped = (gClamped * (1f - bwAmount) + grey * bwAmount).toInt().coerceIn(0, 255)
+                bClamped = (bClamped * (1f - bwAmount) + grey * bwAmount).toInt().coerceIn(0, 255)
+            }
+
+            // Portrait Face Spotlight
+            if (state.portraitSpotlight > 0f) {
+                val ps = state.portraitSpotlight / 100f
+                val px = (i % width) - centerX
+                val py = (i / width) - centerY
+                val dist = sqrt(px * px + py * py) / maxDist
+                val spot = (1f - dist.toFloat()).coerceIn(0f, 1f).pow(1.5f) * ps * 45f
+                rClamped = (rClamped + spot).toInt().coerceIn(0, 255)
+                gClamped = (gClamped + spot).toInt().coerceIn(0, 255)
+                bClamped = (bClamped + spot).toInt().coerceIn(0, 255)
             }
 
             pixels[i] = (a shl 24) or (rClamped shl 16) or (gClamped shl 8) or bClamped
@@ -729,6 +865,288 @@ object ImageProcessor {
 
         output.setPixels(dstPixels, 0, width, 0, 0, width, height)
         bitmap.recycle()
+        return output
+    }
+
+    private fun applyHealing(source: Bitmap, strokes: List<HealingStroke>): Bitmap {
+        if (strokes.isEmpty()) return source
+        val width = source.width
+        val height = source.height
+        val output = source.copy(Bitmap.Config.ARGB_8888, true)
+        val pixels = IntArray(width * height)
+        output.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        val inpaintMask = BooleanArray(width * height)
+
+        // Mark inpaint mask for all strokes
+        for (stroke in strokes) {
+            val rPx = (stroke.radius * width).toInt().coerceAtLeast(4)
+            for (pt in stroke.points) {
+                val cx = (pt.x * width).toInt()
+                val cy = (pt.y * height).toInt()
+                val x0 = max(0, cx - rPx)
+                val x1 = min(width - 1, cx + rPx)
+                val y0 = max(0, cy - rPx)
+                val y1 = min(height - 1, cy + rPx)
+
+                for (y in y0..y1) {
+                    val dy = y - cy
+                    val yOff = y * width
+                    for (x in x0..x1) {
+                        val dx = x - cx
+                        if (dx * dx + dy * dy <= rPx * rPx) {
+                            inpaintMask[yOff + x] = true
+                        }
+                    }
+                }
+            }
+        }
+
+        // For masked pixels, diffuse / inpaint from nearest unmasked perimeter neighbors
+        val tempPixels = pixels.clone()
+        val searchR = (width * 0.05f).toInt().coerceIn(6, 40)
+
+        for (y in 0 until height) {
+            val yOff = y * width
+            for (x in 0 until width) {
+                val idx = yOff + x
+                if (!inpaintMask[idx]) continue
+
+                var sumR = 0f
+                var sumG = 0f
+                var sumB = 0f
+                var totalW = 0f
+
+                for (sy in max(0, y - searchR)..min(height - 1, y + searchR) step 2) {
+                    val sYOff = sy * width
+                    val dy = (sy - y).toFloat()
+                    for (sx in max(0, x - searchR)..min(width - 1, x + searchR) step 2) {
+                        val sIdx = sYOff + sx
+                        if (!inpaintMask[sIdx]) {
+                            val dx = (sx - x).toFloat()
+                            val d2 = dx * dx + dy * dy
+                            if (d2 > 0f) {
+                                val w = 1f / d2
+                                val p = tempPixels[sIdx]
+                                sumR += ((p shr 16) and 0xFF) * w
+                                sumG += ((p shr 8) and 0xFF) * w
+                                sumB += (p and 0xFF) * w
+                                totalW += w
+                            }
+                        }
+                    }
+                }
+
+                if (totalW > 0f) {
+                    val nr = (sumR / totalW).toInt().coerceIn(0, 255)
+                    val ng = (sumG / totalW).toInt().coerceIn(0, 255)
+                    val nb = (sumB / totalW).toInt().coerceIn(0, 255)
+                    pixels[idx] = (0xFF shl 24) or (nr shl 16) or (ng shl 8) or nb
+                }
+            }
+        }
+
+        output.setPixels(pixels, 0, width, 0, 0, width, height)
+        return output
+    }
+
+    private fun applySelectiveUPoint(source: Bitmap, points: List<SelectivePoint>): Bitmap {
+        val activePoints = points.filter { !it.isDefault }
+        if (activePoints.isEmpty()) return source
+
+        val width = source.width
+        val height = source.height
+        val output = source.copy(Bitmap.Config.ARGB_8888, true)
+        val pixels = IntArray(width * height)
+        output.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        for (pt in activePoints) {
+            val cx = (pt.normX * width).toInt().coerceIn(0, width - 1)
+            val cy = (pt.normY * height).toInt().coerceIn(0, height - 1)
+            val centerPx = pixels[cy * width + cx]
+            val tr = (centerPx shr 16) and 0xFF
+            val tg = (centerPx shr 8) and 0xFF
+            val tb = centerPx and 0xFF
+
+            val radiusPx = (pt.radius * max(width, height)).coerceAtLeast(10f)
+            val radiusSq = radiusPx * radiusPx
+
+            val minX = max(0, (cx - radiusPx).toInt())
+            val maxX = min(width - 1, (cx + radiusPx).toInt())
+            val minY = max(0, (cy - radiusPx).toInt())
+            val maxY = min(height - 1, (cy + radiusPx).toInt())
+
+            val bAmount = pt.brightness * 1.2f
+            val cAmount = pt.contrast / 100f
+            val sAmount = pt.saturation / 100f
+
+            for (y in minY..maxY) {
+                val dy = (y - cy).toFloat()
+                val dySq = dy * dy
+                val yOff = y * width
+                for (x in minX..maxX) {
+                    val dx = (x - cx).toFloat()
+                    val distSq = dx * dx + dySq
+                    if (distSq > radiusSq) continue
+
+                    val idx = yOff + x
+                    val px = pixels[idx]
+                    val r = (px shr 16) and 0xFF
+                    val g = (px shr 8) and 0xFF
+                    val b = px and 0xFF
+
+                    // Spatial Gaussian falloff
+                    val spatial = (1f - sqrt(distSq) / radiusPx).coerceIn(0f, 1f)
+
+                    // Color similarity (Euclidean distance in RGB space)
+                    val dR = (r - tr).toFloat()
+                    val dG = (g - tg).toFloat()
+                    val dB = (b - tb).toFloat()
+                    val colorDist = sqrt(dR * dR + dG * dG + dB * dB)
+                    val colorSim = (1f - colorDist / 125f).coerceIn(0f, 1f).pow(1.5f)
+
+                    val weight = spatial * colorSim
+                    if (weight <= 0.005f) continue
+
+                    var rf = r.toFloat()
+                    var gf = g.toFloat()
+                    var bf = b.toFloat()
+
+                    // Brightness
+                    if (bAmount != 0f) {
+                        rf += bAmount * weight
+                        gf += bAmount * weight
+                        bf += bAmount * weight
+                    }
+
+                    // Contrast
+                    if (cAmount != 0f) {
+                        val factor = 1f + cAmount * weight
+                        rf = (rf - 128f) * factor + 128f
+                        gf = (gf - 128f) * factor + 128f
+                        bf = (bf - 128f) * factor + 128f
+                    }
+
+                    // Saturation
+                    if (sAmount != 0f) {
+                        val lum = 0.299f * rf + 0.587f * gf + 0.114f * bf
+                        val factor = 1f + sAmount * weight
+                        rf = lum + (rf - lum) * factor
+                        gf = lum + (gf - lum) * factor
+                        bf = lum + (bf - lum) * factor
+                    }
+
+                    val nr = rf.toInt().coerceIn(0, 255)
+                    val ng = gf.toInt().coerceIn(0, 255)
+                    val nb = bf.toInt().coerceIn(0, 255)
+                    pixels[idx] = (0xFF shl 24) or (nr shl 16) or (ng shl 8) or nb
+                }
+            }
+        }
+
+        output.setPixels(pixels, 0, width, 0, 0, width, height)
+        return output
+    }
+
+    fun applyDoubleExposure(
+        base: Bitmap,
+        secondary: Bitmap?,
+        state: DoubleExposureState
+    ): Bitmap {
+        if (secondary == null || state.opacity <= 0f) return base
+
+        val width = base.width
+        val height = base.height
+        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+        // Scale secondary to fit base dimensions
+        val scaledSecondary = if (secondary.width != width || secondary.height != height) {
+            Bitmap.createScaledBitmap(secondary, width, height, true)
+        } else {
+            secondary
+        }
+
+        val basePixels = IntArray(width * height)
+        val secPixels = IntArray(width * height)
+        val outPixels = IntArray(width * height)
+
+        base.getPixels(basePixels, 0, width, 0, 0, width, height)
+        scaledSecondary.getPixels(secPixels, 0, width, 0, 0, width, height)
+
+        val alpha = state.opacity.coerceIn(0f, 1f)
+        val invAlpha = 1f - alpha
+
+        for (i in basePixels.indices) {
+            val bp = basePixels[i]
+            val sp = secPixels[i]
+
+            val bR = ((bp shr 16) and 0xFF) / 255f
+            val bG = ((bp shr 8) and 0xFF) / 255f
+            val bB = (bp and 0xFF) / 255f
+
+            val sR = ((sp shr 16) and 0xFF) / 255f
+            val sG = ((sp shr 8) and 0xFF) / 255f
+            val sB = (sp and 0xFF) / 255f
+
+            var blendR: Float
+            var blendG: Float
+            var blendB: Float
+
+            when (state.blendMode) {
+                DoubleExposureBlendMode.NORMAL -> {
+                    blendR = sR
+                    blendG = sG
+                    blendB = sB
+                }
+                DoubleExposureBlendMode.LIGHTEN -> {
+                    blendR = max(bR, sR)
+                    blendG = max(bG, sG)
+                    blendB = max(bB, sB)
+                }
+                DoubleExposureBlendMode.DARKEN -> {
+                    blendR = min(bR, sR)
+                    blendG = min(bG, sG)
+                    blendB = min(bB, sB)
+                }
+                DoubleExposureBlendMode.ADD -> {
+                    blendR = min(1f, bR + sR)
+                    blendG = min(1f, bG + sG)
+                    blendB = min(1f, bB + sB)
+                }
+                DoubleExposureBlendMode.SUBTRACT -> {
+                    blendR = max(0f, bR - sR)
+                    blendG = max(0f, bG - sG)
+                    blendB = max(0f, bB - sB)
+                }
+                DoubleExposureBlendMode.SCREEN -> {
+                    blendR = 1f - (1f - bR) * (1f - sR)
+                    blendG = 1f - (1f - bG) * (1f - sG)
+                    blendB = 1f - (1f - bB) * (1f - sB)
+                }
+                DoubleExposureBlendMode.MULTIPLY -> {
+                    blendR = bR * sR
+                    blendG = bG * sG
+                    blendB = bB * sB
+                }
+                DoubleExposureBlendMode.OVERLAY -> {
+                    blendR = if (bR < 0.5f) 2f * bR * sR else 1f - 2f * (1f - bR) * (1f - sR)
+                    blendG = if (bG < 0.5f) 2f * bG * sR else 1f - 2f * (1f - bG) * (1f - sG)
+                    blendB = if (bB < 0.5f) 2f * bB * sR else 1f - 2f * (1f - bB) * (1f - sB)
+                }
+            }
+
+            val finalR = ((bR * invAlpha + blendR * alpha) * 255f).toInt().coerceIn(0, 255)
+            val finalG = ((bG * invAlpha + blendG * alpha) * 255f).toInt().coerceIn(0, 255)
+            val finalB = ((bB * invAlpha + blendB * alpha) * 255f).toInt().coerceIn(0, 255)
+
+            outPixels[i] = (0xFF shl 24) or (finalR shl 16) or (finalG shl 8) or finalB
+        }
+
+        if (scaledSecondary != secondary) {
+            scaledSecondary.recycle()
+        }
+
+        output.setPixels(outPixels, 0, width, 0, 0, width, height)
         return output
     }
 

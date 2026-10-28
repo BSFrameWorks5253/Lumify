@@ -266,21 +266,31 @@ fun SplashScreen(
                     .alpha(textAlpha.value)
             ) {
                 Text(
-                    text = "LUMIFY",
+                    text = "SNAPSEED",
                     color = TextPrimary,
-                    fontSize = 28.sp,
+                    fontSize = 30.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 5.sp
+                    letterSpacing = 6.sp
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Master RAW & Photo Editor",
+                    text = "BY BURHANUDDIN",
                     color = AccentCyan,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 3.sp
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = "Pro Photo Editing & Crazy AI Lab",
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.sp
                 )
             }
         }

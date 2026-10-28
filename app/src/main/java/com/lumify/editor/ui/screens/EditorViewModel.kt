@@ -31,10 +31,14 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 
 import androidx.compose.ui.geometry.Offset
+import com.lumify.editor.core.DoubleExposureState
+import com.lumify.editor.core.HealingStroke
 import com.lumify.editor.core.MaskType
 import com.lumify.editor.core.SelectiveMask
-
+import com.lumify.editor.core.SelectivePoint
 import com.lumify.editor.core.WatermarkConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.lumify.editor.export.BatchQueueItem
 import com.lumify.editor.export.BatchQueueManager
 import com.lumify.editor.gpu.GpuRenderEngine
@@ -52,12 +56,34 @@ enum class EditorTab(val label: String) {
     PRESETS("Presets")
 }
 
+enum class SnapseedTab(val label: String) {
+    LOOKS("LOOKS"),
+    TOOLS("TOOLS"),
+    EXPORT("EXPORT")
+}
+
 data class EditorUiState(
     val originalBitmap: Bitmap? = null,
     val previewBitmap: Bitmap? = null,
     val metadata: ImageMetadata? = null,
     val editState: EditState = EditState(),
     val activeTab: EditorTab = EditorTab.LIGHT,
+    val activeSnapseedTab: SnapseedTab = SnapseedTab.LOOKS,
+    val activeTool: SnapseedTool? = null,
+    val activeParamIndex: Int = 0,
+    val toolSnapshotState: EditState? = null,
+    val isComparingTool: Boolean = false,
+    val showToolsSheet: Boolean = false,
+    val showExportSheet: Boolean = false,
+    val showViewEditsDialog: Boolean = false,
+    val showExifDialog: Boolean = false,
+    val showCrazyLabDialog: Boolean = false,
+    val editStack: List<EditStackItem> = emptyList(),
+    val showSplitCompare: Boolean = false,
+    val splitComparePosition: Float = 0.5f,
+    val showZebraFalseColor: Boolean = false,
+    val currentHudValue: Float = 0f,
+    val isDraggingGesture: Boolean = false,
     val activeHslChannel: HslChannel = HslChannel.RED,
     val isComparing: Boolean = false,
     val isProcessing: Boolean = false,
@@ -71,6 +97,11 @@ data class EditorUiState(
     val isLoupeActive: Boolean = false,
     val loupeTouchOffset: Offset = Offset.Zero,
     val loupeTouchNorm: Offset = Offset(0.5f, 0.5f),
+    val customPresets: List<FilterPreset> = emptyList(),
+    val showCreatePresetDialog: Boolean = false,
+    val showQrShareDialog: Boolean = false,
+    val showQrImportDialog: Boolean = false,
+    val sharingPresetName: String = "My Look",
     val copiedRecipe: EditState? = null,
     val isGpuAccelerationSupported: Boolean = GpuRenderEngine.isGpuAccelerationSupported
 )
@@ -132,6 +163,308 @@ class EditorViewModel : ViewModel() {
 
     fun setShowExportDialog(show: Boolean) {
         _uiState.value = _uiState.value.copy(showExportDialog = show)
+    }
+
+    fun selectSnapseedTab(tab: SnapseedTab) {
+        _uiState.value = _uiState.value.copy(
+            activeSnapseedTab = tab,
+            showToolsSheet = (tab == SnapseedTab.TOOLS),
+            showExportSheet = (tab == SnapseedTab.EXPORT)
+        )
+    }
+
+    fun openSnapseedTool(tool: SnapseedTool) {
+        val currentEdit = _uiState.value.editState
+        val initialParam = tool.parameters.firstOrNull()
+        val initialVal = initialParam?.getValue?.invoke(currentEdit) ?: 0f
+
+        _uiState.value = _uiState.value.copy(
+            activeTool = tool,
+            activeParamIndex = 0,
+            toolSnapshotState = currentEdit,
+            showToolsSheet = false,
+            isComparingTool = false,
+            currentHudValue = initialVal
+        )
+    }
+
+    fun cancelSnapseedTool() {
+        val snapshot = _uiState.value.toolSnapshotState ?: _uiState.value.editState
+        _uiState.value = _uiState.value.copy(
+            editState = snapshot,
+            activeTool = null,
+            toolSnapshotState = null,
+            isComparingTool = false
+        )
+        scheduleProcessing(snapshot)
+    }
+
+    fun applySnapseedTool() {
+        val tool = _uiState.value.activeTool ?: return
+        val current = _uiState.value.editState
+        historyManager.pushState(current, toolName = tool.title, summary = "Applied ${tool.title}")
+        _uiState.value = _uiState.value.copy(
+            activeTool = null,
+            toolSnapshotState = null,
+            isComparingTool = false,
+            editStack = historyManager.currentEditStack
+        )
+        syncHistoryFlags()
+    }
+
+    fun setParamIndex(index: Int) {
+        val tool = _uiState.value.activeTool ?: return
+        if (index in tool.parameters.indices) {
+            val param = tool.parameters[index]
+            val value = param.getValue(_uiState.value.editState)
+            _uiState.value = _uiState.value.copy(
+                activeParamIndex = index,
+                currentHudValue = value
+            )
+        }
+    }
+
+    fun nextParam() {
+        val tool = _uiState.value.activeTool ?: return
+        if (tool.parameters.isNotEmpty()) {
+            val next = (_uiState.value.activeParamIndex + 1) % tool.parameters.size
+            setParamIndex(next)
+        }
+    }
+
+    fun prevParam() {
+        val tool = _uiState.value.activeTool ?: return
+        if (tool.parameters.isNotEmpty()) {
+            val prev = (_uiState.value.activeParamIndex - 1 + tool.parameters.size) % tool.parameters.size
+            setParamIndex(prev)
+        }
+    }
+
+    fun adjustActiveParameter(delta: Float) {
+        val tool = _uiState.value.activeTool ?: return
+        val param = tool.parameters.getOrNull(_uiState.value.activeParamIndex) ?: return
+        val currentVal = param.getValue(_uiState.value.editState)
+        val newVal = (currentVal + delta).coerceIn(param.minValue, param.maxValue)
+        val updatedState = param.setValue(_uiState.value.editState, newVal)
+        _uiState.value = _uiState.value.copy(
+            editState = updatedState,
+            currentHudValue = newVal
+        )
+        scheduleProcessing(updatedState)
+    }
+
+    fun toggleToolComparison(showBefore: Boolean) {
+        _uiState.value = _uiState.value.copy(isComparingTool = showBefore)
+    }
+
+    fun setShowToolsSheet(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showToolsSheet = show)
+        if (!show && _uiState.value.activeSnapseedTab == SnapseedTab.TOOLS) {
+            _uiState.value = _uiState.value.copy(activeSnapseedTab = SnapseedTab.LOOKS)
+        }
+    }
+
+    fun setShowExportSheet(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showExportSheet = show)
+        if (!show && _uiState.value.activeSnapseedTab == SnapseedTab.EXPORT) {
+            _uiState.value = _uiState.value.copy(activeSnapseedTab = SnapseedTab.LOOKS)
+        }
+    }
+
+    fun setShowViewEditsDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            showViewEditsDialog = show,
+            editStack = historyManager.currentEditStack
+        )
+    }
+
+    fun removeStackLayer(index: Int) {
+        val newState = historyManager.removeStackLayer(index) ?: return
+        _uiState.value = _uiState.value.copy(
+            editState = newState,
+            editStack = historyManager.currentEditStack
+        )
+        syncHistoryFlags()
+        scheduleProcessing(newState)
+    }
+
+    fun setShowExifDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showExifDialog = show)
+    }
+
+    fun setShowCrazyLabDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showCrazyLabDialog = show)
+    }
+
+    fun toggleSplitComparison() {
+        _uiState.value = _uiState.value.copy(showSplitCompare = !_uiState.value.showSplitCompare)
+    }
+
+    fun setSplitPosition(pos: Float) {
+        _uiState.value = _uiState.value.copy(splitComparePosition = pos.coerceIn(0.05f, 0.95f))
+    }
+
+    fun toggleZebraFalseColor() {
+        _uiState.value = _uiState.value.copy(showZebraFalseColor = !_uiState.value.showZebraFalseColor)
+    }
+
+    fun loadOfflinePresets(context: Context) {
+        val loaded = com.lumify.editor.presets.CustomPresetManager.loadCustomPresets(context)
+        _uiState.value = _uiState.value.copy(customPresets = loaded)
+    }
+
+    fun setShowCreatePresetDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showCreatePresetDialog = show)
+    }
+
+    fun createOfflinePreset(context: Context, name: String, category: String = "My Presets") {
+        val currentEdit = _uiState.value.editState
+        val created = com.lumify.editor.presets.CustomPresetManager.savePreset(context, name, category, currentEdit)
+        val updatedList = com.lumify.editor.presets.CustomPresetManager.loadCustomPresets(context)
+        _uiState.value = _uiState.value.copy(
+            customPresets = updatedList,
+            showCreatePresetDialog = false,
+            exportMessage = "Saved preset '$name' offline!"
+        )
+    }
+
+    fun deleteOfflinePreset(context: Context, id: String) {
+        com.lumify.editor.presets.CustomPresetManager.deletePreset(context, id)
+        val updatedList = com.lumify.editor.presets.CustomPresetManager.loadCustomPresets(context)
+        _uiState.value = _uiState.value.copy(
+            customPresets = updatedList,
+            exportMessage = "Preset deleted"
+        )
+    }
+
+    var secondaryBitmap: Bitmap? = null
+        private set
+
+    // Snapseed Selective U-Point
+    fun addSelectivePoint(normX: Float, normY: Float) {
+        val currentPoints = _uiState.value.editState.selectivePoints.toMutableList()
+        val newPoint = SelectivePoint(normX = normX, normY = normY)
+        currentPoints.add(newPoint)
+        val newIndex = currentPoints.lastIndex
+        val newState = _uiState.value.editState.copy(
+            selectivePoints = currentPoints,
+            activeSelectivePointIndex = newIndex
+        )
+        _uiState.value = _uiState.value.copy(editState = newState)
+        scheduleProcessing(newState)
+    }
+
+    fun selectSelectivePoint(index: Int) {
+        val newState = _uiState.value.editState.copy(activeSelectivePointIndex = index)
+        _uiState.value = _uiState.value.copy(editState = newState)
+    }
+
+    fun updateSelectivePoint(index: Int, transform: (SelectivePoint) -> SelectivePoint) {
+        val currentPoints = _uiState.value.editState.selectivePoints.toMutableList()
+        if (index in currentPoints.indices) {
+            currentPoints[index] = transform(currentPoints[index])
+            val newState = _uiState.value.editState.copy(selectivePoints = currentPoints)
+            _uiState.value = _uiState.value.copy(editState = newState)
+            scheduleProcessing(newState)
+        }
+    }
+
+    fun deleteSelectivePoint(index: Int) {
+        val currentPoints = _uiState.value.editState.selectivePoints.toMutableList()
+        if (index in currentPoints.indices) {
+            currentPoints.removeAt(index)
+            val newIndex = if (currentPoints.isEmpty()) -1 else (index - 1).coerceAtLeast(0)
+            val newState = _uiState.value.editState.copy(
+                selectivePoints = currentPoints,
+                activeSelectivePointIndex = newIndex
+            )
+            _uiState.value = _uiState.value.copy(editState = newState)
+            scheduleProcessing(newState)
+        }
+    }
+
+    // Healing / Spot Removal
+    fun addHealingStroke(stroke: HealingStroke) {
+        val currentStrokes = _uiState.value.editState.healingStrokes + stroke
+        val newState = _uiState.value.editState.copy(healingStrokes = currentStrokes)
+        _uiState.value = _uiState.value.copy(editState = newState)
+        scheduleProcessing(newState)
+    }
+
+    fun undoHealingStroke() {
+        val currentStrokes = _uiState.value.editState.healingStrokes
+        if (currentStrokes.isNotEmpty()) {
+            val newState = _uiState.value.editState.copy(healingStrokes = currentStrokes.dropLast(1))
+            _uiState.value = _uiState.value.copy(editState = newState)
+            scheduleProcessing(newState)
+        }
+    }
+
+    fun clearHealingStrokes() {
+        val newState = _uiState.value.editState.copy(healingStrokes = emptyList())
+        _uiState.value = _uiState.value.copy(editState = newState)
+        scheduleProcessing(newState)
+    }
+
+    // Double Exposure
+    fun setDoubleExposureSecondaryImage(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val stream = context.contentResolver.openInputStream(uri)
+                val bmp = android.graphics.BitmapFactory.decodeStream(stream)
+                secondaryBitmap = bmp
+                val newState = _uiState.value.editState.copy(
+                    doubleExposure = _uiState.value.editState.doubleExposure.copy(secondaryImageUri = uri.toString())
+                )
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(editState = newState)
+                    scheduleProcessing(newState)
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(exportMessage = "Failed to load blend image: ${e.message}")
+            }
+        }
+    }
+
+    fun setDoubleExposureState(deState: DoubleExposureState) {
+        val newState = _uiState.value.editState.copy(doubleExposure = deState)
+        _uiState.value = _uiState.value.copy(editState = newState)
+        scheduleProcessing(newState)
+    }
+
+    // QR Preset Sharing & Importing
+    fun openQrShare(presetName: String = "My Look") {
+        _uiState.value = _uiState.value.copy(
+            showQrShareDialog = true,
+            sharingPresetName = presetName
+        )
+    }
+
+    fun closeQrShare() {
+        _uiState.value = _uiState.value.copy(showQrShareDialog = false)
+    }
+
+    fun openQrImport() {
+        _uiState.value = _uiState.value.copy(showQrImportDialog = true)
+    }
+
+    fun closeQrImport() {
+        _uiState.value = _uiState.value.copy(showQrImportDialog = false)
+    }
+
+    fun importPreset(context: Context, preset: FilterPreset) {
+        val saved = com.lumify.editor.presets.CustomPresetManager.savePreset(
+            context,
+            preset.name,
+            "Imported",
+            preset.applyState(EditState())
+        )
+        loadOfflinePresets(context)
+        applyPreset(saved)
+        _uiState.value = _uiState.value.copy(
+            showQrImportDialog = false,
+            exportMessage = "Imported & applied preset '${preset.name}'"
+        )
     }
 
     fun clearMessage() {
@@ -262,6 +595,10 @@ class EditorViewModel : ViewModel() {
         updateEditState { it.copy(activeMask = newMask) }
     }
 
+    fun updateActiveMask(mask: SelectiveMask) {
+        updateEditState { it.copy(activeMask = mask) }
+    }
+
     fun clearMask() {
         updateEditState { it.copy(activeMask = null) }
         onSliderDragFinished()
@@ -291,6 +628,9 @@ class EditorViewModel : ViewModel() {
             exportMessage = "Edit recipe copied to clipboard"
         )
     }
+
+    fun copyRecipe() = copySettings()
+    fun pasteRecipe() = pasteSettings()
 
     fun pasteSettings() {
         val recipe = _uiState.value.copiedRecipe
@@ -396,8 +736,8 @@ class EditorViewModel : ViewModel() {
         val source = _uiState.value.originalBitmap ?: return
         processJob?.cancel()
         processJob = viewModelScope.launch {
-            delay(16) // ~60fps debounce for ultra responsive touch scrubbing
-            val processed = ImageProcessor.processImage(source, state)
+            delay(12) // ultra responsive touch scrubbing
+            val processed = ImageProcessor.processImage(source, state, secondaryBitmap = secondaryBitmap)
             _uiState.value = _uiState.value.copy(previewBitmap = processed)
             updateHistogram(processed)
         }
@@ -429,7 +769,12 @@ class EditorViewModel : ViewModel() {
 
             try {
                 // Render full resolution
-                val finalBitmap = ImageProcessor.processImage(source, _uiState.value.editState, isExport = true)
+                val finalBitmap = ImageProcessor.processImage(
+                    source,
+                    _uiState.value.editState,
+                    secondaryBitmap = secondaryBitmap,
+                    isExport = true
+                )
                 val fileName = "LUMIFY_${System.currentTimeMillis()}.${format.extension.lowercase().substringBefore(' ')}"
 
                 val success = saveBitmapToGallery(context, finalBitmap, fileName, format.compressFormat, quality)
