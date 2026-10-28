@@ -90,15 +90,23 @@ jobs:
         run: |
           echo "## Build Diagnostics" >> $GITHUB_STEP_SUMMARY
           if [ -f build_debug.log ]; then
-            echo "### Debug Build Log (Last 120 lines)" >> $GITHUB_STEP_SUMMARY
+            echo "### Kotlin / Java Compiler Errors" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            grep -E "(^e:|^w:|Compilation error|FAILURE:|error:)" build_debug.log | head -n 50 >> $GITHUB_STEP_SUMMARY || echo "No explicit e: pattern found in build_debug.log" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 120 build_debug.log >> $GITHUB_STEP_SUMMARY
+            echo "### Debug Build Log (Last 300 lines)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 300 build_debug.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
           if [ -f build_release.log ]; then
-            echo "### Release Build Log (Last 120 lines)" >> $GITHUB_STEP_SUMMARY
+            echo "### Release Build Compiler Errors" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            grep -E "(^e:|^w:|Compilation error|FAILURE:|error:)" build_release.log | head -n 50 >> $GITHUB_STEP_SUMMARY || echo "No explicit e: pattern found in build_release.log" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 120 build_release.log >> $GITHUB_STEP_SUMMARY
+            echo "### Release Build Log (Last 300 lines)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 300 build_release.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 

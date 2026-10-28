@@ -32,6 +32,7 @@ import java.io.OutputStream
 
 import androidx.compose.ui.geometry.Offset
 import com.lumify.editor.core.DoubleExposureState
+import com.lumify.editor.core.EditStackItem
 import com.lumify.editor.core.HealingStroke
 import com.lumify.editor.core.MaskType
 import com.lumify.editor.core.SelectiveMask
