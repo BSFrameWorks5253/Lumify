@@ -216,7 +216,7 @@ fun CropOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
             ) {
-                items(AspectRatio.values()) { ratio ->
+                items(AspectRatio.entries) { ratio ->
                     val isSelected = ratio == selectedRatio
                     Box(
                         modifier = Modifier

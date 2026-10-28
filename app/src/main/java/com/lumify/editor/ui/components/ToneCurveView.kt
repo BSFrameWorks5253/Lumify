@@ -87,7 +87,7 @@ fun ToneCurveView(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CurveChannel.values().forEach { channel ->
+            CurveChannel.entries.forEach { channel ->
                 val isSelected = channel == selectedChannel
                 Box(
                     modifier = Modifier

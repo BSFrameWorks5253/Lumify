@@ -139,7 +139,7 @@ fun WatermarkDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    WatermarkPosition.values().forEach { pos ->
+                    WatermarkPosition.entries.forEach { pos ->
                         val isSelected = pos == position
                         Box(
                             modifier = Modifier

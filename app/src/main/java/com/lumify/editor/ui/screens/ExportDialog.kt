@@ -101,7 +101,7 @@ fun ExportDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ExportFormat.values().forEach { fmt ->
+                    ExportFormat.entries.forEach { fmt ->
                         val isSelected = fmt == selectedFormat
                         Box(
                             modifier = Modifier

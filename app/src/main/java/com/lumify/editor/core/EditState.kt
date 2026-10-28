@@ -219,7 +219,7 @@ data class EditState(
     val selectedAspectRatio: AspectRatio = AspectRatio.ORIGINAL,
 
     // HSL 8-channel Color Grading
-    val hslAdjustments: Map<HslChannel, HslAdjustment> = HslChannel.values().associateWith { HslAdjustment() },
+    val hslAdjustments: Map<HslChannel, HslAdjustment> = HslChannel.entries.associateWith { HslAdjustment() },
 
     // Interactive Tone Curves
     val toneCurves: ToneCurves = ToneCurves(),

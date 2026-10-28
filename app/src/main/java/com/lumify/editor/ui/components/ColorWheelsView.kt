@@ -94,7 +94,7 @@ fun ColorWheelsView(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            WheelRange.values().forEach { range ->
+            WheelRange.entries.forEach { range ->
                 val isSelected = range == selectedRange
                 val channel = when (range) {
                     WheelRange.SHADOWS -> colorGrading.shadows
