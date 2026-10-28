@@ -24,7 +24,9 @@ data class ImageMetadata(
     val shutterSpeed: String? = null,
     val dateTime: String? = null,
     val isRaw: Boolean = false
-)
+) {
+    val megapixels: String get() = "%.1f MP".format(java.util.Locale.US, (width.toLong() * height) / 1_000_000f)
+}
 
 object RawImageDecoder {
 

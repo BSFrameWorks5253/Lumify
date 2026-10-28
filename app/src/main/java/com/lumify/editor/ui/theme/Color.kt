@@ -13,6 +13,8 @@ val AccentCyan = Color(0xFF00E5FF)
 val AccentPurple = Color(0xFF7C4DFF)
 val AccentAmber = Color(0xFFFFB300)
 val AccentPink = Color(0xFFFF4081)
+val AccentEmerald = Color(0xFF10B981)
+val AccentRed = Color(0xFFEF4444)
 
 val TextPrimary = Color(0xFFF0F4F8)
 val TextSecondary = Color(0xFF94A3B8)

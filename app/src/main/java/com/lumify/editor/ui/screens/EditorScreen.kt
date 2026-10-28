@@ -313,9 +313,7 @@ fun EditorScreen(
                         if (uiState.showSplitCompare) {
                             SplitComparisonView(
                                 originalBitmap = original,
-                                previewBitmap = displayBitmap,
-                                splitPosition = uiState.splitComparePosition,
-                                onPositionChange = { viewModel.setSplitPosition(it) },
+                                editedBitmap = displayBitmap,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -659,10 +657,10 @@ fun EditorScreen(
                     ) {
                         ToneCurveView(
                             curves = uiState.editState.toneCurves,
-                            onCurvesChanged = { newCurves ->
+                            onCurvesChange = { newCurves ->
                                 viewModel.updateEditState { it.copy(toneCurves = newCurves) }
                             },
-                            canvasSize = 220.dp
+                            canvasDimension = 220.dp
                         )
                     }
                 } else if (uiState.activeTool == SnapseedTool.COLOR_WHEELS) {
@@ -672,8 +670,8 @@ fun EditorScreen(
                             .padding(bottom = 80.dp)
                     ) {
                         ColorWheelsView(
-                            state = uiState.editState.colorGrading,
-                            onStateChange = { newGrading ->
+                            colorGrading = uiState.editState.colorGrading,
+                            onColorGradingChange = { newGrading ->
                                 viewModel.updateEditState { it.copy(colorGrading = newGrading) }
                             }
                         )

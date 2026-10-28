@@ -59,8 +59,8 @@ fun CropOverlay(
     selectedRatio: AspectRatio,
     onCropChange: (CropRect) -> Unit,
     onRatioSelect: (AspectRatio) -> Unit,
-    onRotate90: () -> Unit,
-    onFlipHorizontal: () -> Unit,
+    onRotate90: () -> Unit = {},
+    onFlipHorizontal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var canvasSize by remember { mutableStateOf(IntSize(1, 1)) }
