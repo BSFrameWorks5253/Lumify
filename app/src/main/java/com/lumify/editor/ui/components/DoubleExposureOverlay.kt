@@ -145,7 +145,7 @@ fun DoubleExposureOverlay(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(DoubleExposureBlendMode.values()) { mode ->
+                        items(DoubleExposureBlendMode.entries) { mode ->
                             val isSelected = (state.blendMode == mode)
                             Box(
                                 modifier = Modifier

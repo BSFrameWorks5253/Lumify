@@ -115,7 +115,7 @@ fun SelectiveUPointOverlay(
                                 if (abs(totalDragY) > 45f) {
                                     val dir = if (totalDragY > 0) 1 else -1
                                     val currentParam = points[selectedIndex].activeParam
-                                    val values = SelectiveParam.values()
+                                    val values = SelectiveParam.entries
                                     val newIdx = (currentParam.ordinal + dir).coerceIn(0, values.lastIndex)
                                     onUpdatePoint(selectedIndex) { it.copy(activeParam = values[newIdx]) }
                                     totalDragY = 0f
@@ -271,7 +271,7 @@ fun SelectiveUPointOverlay(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            SelectiveParam.values().forEach { param ->
+                            SelectiveParam.entries.forEach { param ->
                                 val isSelected = (activePoint.activeParam == param)
                                 Box(
                                     modifier = Modifier

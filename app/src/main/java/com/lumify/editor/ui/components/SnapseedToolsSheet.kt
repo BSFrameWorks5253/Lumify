@@ -113,8 +113,8 @@ fun SnapseedToolsSheet(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
             ) {
-                ToolCategory.values().forEach { category ->
-                    val toolsInCategory = SnapseedTool.values().filter { it.category == category }
+                ToolCategory.entries.forEach { category ->
+                    val toolsInCategory = SnapseedTool.entries.filter { it.category == category }
                     if (toolsInCategory.isNotEmpty()) {
                         item(span = { GridItemSpan(4) }) {
                             Row(

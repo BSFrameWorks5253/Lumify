@@ -336,10 +336,10 @@ fun EditorScreen(
                         }
 
                         // Selective Masking Overlay
-                        if (uiState.activeTool == SnapseedTool.SELECTIVE_MASKS) {
+                        if (uiState.activeTool == SnapseedTool.SELECTIVE_MASKS && uiState.editState.activeMask != null) {
                             MaskOverlay(
-                                mask = uiState.editState.activeMask,
-                                onMaskChanged = { updatedMask ->
+                                mask = uiState.editState.activeMask!!,
+                                onMaskChange = { updatedMask ->
                                     viewModel.updateActiveMask(updatedMask)
                                 },
                                 modifier = Modifier.fillMaxSize()
@@ -385,9 +385,8 @@ fun EditorScreen(
                         if (uiState.isLoupeActive) {
                             PixelLoupe(
                                 bitmap = displayBitmap,
-                                touchPositionScreen = uiState.loupeTouchOffset,
-                                touchNorm = uiState.loupeTouchNorm,
-                                containerSize = canvasSize
+                                touchPointNorm = uiState.loupeTouchNorm,
+                                screenTouchOffset = uiState.loupeTouchOffset
                             )
                         }
 
@@ -1001,10 +1000,8 @@ fun EditorScreen(
                 // 10. Watermark & Export Dialog
                 if (uiState.showExportDialog) {
                     ExportDialog(
-                        metadata = uiState.metadata,
-                        isProcessing = uiState.isProcessing,
                         onDismiss = { viewModel.setShowExportDialog(false) },
-                        onExport = { format, quality, preserveExif ->
+                        onConfirmExport = { format, quality, preserveExif ->
                             viewModel.exportImage(context, format, quality, preserveExif)
                         }
                     )
@@ -1012,9 +1009,9 @@ fun EditorScreen(
 
                 if (uiState.showWatermarkDialog) {
                     WatermarkDialog(
-                        config = uiState.editState.watermark,
+                        currentConfig = uiState.editState.watermark,
                         onDismiss = { viewModel.setShowWatermarkDialog(false) },
-                        onApply = { newConfig ->
+                        onSaveConfig = { newConfig ->
                             viewModel.updateWatermarkConfig(newConfig)
                         }
                     )
